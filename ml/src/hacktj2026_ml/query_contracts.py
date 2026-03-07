@@ -179,6 +179,13 @@ class QueryRequest(APIDTOModel):
     voice_transcript_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     signal_capabilities: SignalCapabilities = Field(default_factory=SignalCapabilities)
     local_capabilities: LocalCapabilities = Field(default_factory=LocalCapabilities)
+    recent_observations_summary: list[ObservationSummary] = Field(default_factory=list)
+    scene_graph_summary: SceneGraphSummary = Field(default_factory=SceneGraphSummary)
+    room_metadata_summary: RoomMetadataSummary = Field(default_factory=RoomMetadataSummary)
+    prior_query_history: list[str] = Field(default_factory=list)
+    object_prototype_catalog: list[str] = Field(default_factory=list)
+    user_aliases: dict[str, list[str]] = Field(default_factory=dict)
+    recent_hidden_hypotheses: list[str] = Field(default_factory=list)
 
 class QueryResponseDTO(APIDTOModel):
     query_id: str
