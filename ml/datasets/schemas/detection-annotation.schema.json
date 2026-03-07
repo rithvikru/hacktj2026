@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "detection-annotation.schema.json",
+  "title": "DetectionAnnotation",
+  "type": "object",
+  "required": [
+    "frame_id",
+    "object_instance_id",
+    "canonical_label",
+    "bbox_xyxy_norm",
+    "visibility_state",
+    "support_surface",
+    "confidence_source"
+  ],
+  "properties": {
+    "frame_id": { "type": "string" },
+    "object_instance_id": { "type": "string" },
+    "canonical_label": { "type": "string" },
+    "bbox_xyxy_norm": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "mask_path": { "type": ["string", "null"] },
+    "mask_rle": { "type": ["string", "null"] },
+    "visibility_state": {
+      "type": "string",
+      "enum": [
+        "fully_visible",
+        "partially_occluded",
+        "soft_hidden",
+        "hard_hidden",
+        "inside_container",
+        "offscreen",
+        "removed"
+      ]
+    },
+    "occluder_label": { "type": ["string", "null"] },
+    "support_surface": { "type": ["string", "null"] },
+    "container": { "type": ["string", "null"] },
+    "nearest_furniture": { "type": ["string", "null"] },
+    "room_section": { "type": ["string", "null"] },
+    "confidence_source": { "type": "string" }
+  },
+  "additionalProperties": false
+}

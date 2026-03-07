@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hidden-target-example.schema.json",
+  "title": "HiddenTargetExample",
+  "type": "object",
+  "required": [
+    "room_id",
+    "query_label",
+    "last_seen_frame_id",
+    "last_seen_transform16",
+    "final_hidden_state",
+    "candidate_regions",
+    "ground_truth_rank_target"
+  ],
+  "properties": {
+    "room_id": { "type": "string" },
+    "query_label": { "type": "string" },
+    "last_seen_frame_id": { "type": "string" },
+    "last_seen_transform16": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 16,
+      "maxItems": 16
+    },
+    "final_hidden_state": {
+      "type": "string",
+      "enum": [
+        "soft_hidden",
+        "hard_hidden",
+        "inside_container",
+        "removed"
+      ]
+    },
+    "true_container": { "type": ["string", "null"] },
+    "true_support_surface": { "type": ["string", "null"] },
+    "true_world_transform16": {
+      "type": ["array", "null"],
+      "items": { "type": "number" },
+      "minItems": 16,
+      "maxItems": 16
+    },
+    "candidate_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["region_id", "label"],
+        "properties": {
+          "region_id": { "type": "string" },
+          "label": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "ground_truth_rank_target": { "type": "string" }
+  },
+  "additionalProperties": false
+}

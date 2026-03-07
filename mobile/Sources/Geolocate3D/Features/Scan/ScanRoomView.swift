@@ -1,8 +1,10 @@
 import SwiftUI
 import RoomPlan
+import SwiftData
 
 struct ScanRoomView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel = ScanViewModel()
 
     var body: some View {
@@ -38,7 +40,7 @@ struct ScanRoomView: View {
                     Spacer()
                     if viewModel.scanState == .ready {
                         Button("Save Room") {
-                            Task { await viewModel.finalizeScan() }
+                            Task { await viewModel.finalizeScan(modelContext: modelContext) }
                         }
                         .buttonStyle(SpatialButtonStyle())
                     }
@@ -54,4 +56,3 @@ struct ScanRoomView: View {
         }
     }
 }
-

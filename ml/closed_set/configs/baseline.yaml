@@ -1,0 +1,62 @@
+run_name: m1_closed_set_baseline
+owner: ai-ml-lead
+model_id: m1.closed_set.detector
+model_version: 0.1.0
+labels_manifest: datasets/manifests/closed-set-labels.yaml
+split_manifest: datasets/manifests/dataset-splits.example.yaml
+
+dataset:
+  frame_records: datasets/records/frame-records.jsonl
+  detection_annotations: datasets/records/detection-annotations.jsonl
+  image_root: datasets/images
+  include_visibility_states:
+    - fully_visible
+    - partially_occluded
+  allow_empty_frames: true
+  require_selected_for_training: true
+  require_selected_for_eval: true
+
+model:
+  architecture: fasterrcnn_mobilenet_v3_large_fpn
+  weights: DEFAULT
+  weights_backbone: null
+  trainable_backbone_layers: 3
+
+optimizer:
+  name: adamw
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  momentum: 0.9
+
+trainer:
+  seed: 2026
+  image_size: 640
+  batch_size: 4
+  num_workers: 0
+  epochs: 20
+  accelerator: auto
+  devices: 1
+  precision: 32-true
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 1
+  log_every_n_steps: 5
+  num_sanity_val_steps: 1
+
+augmentations:
+  horizontal_flip_prob: 0.5
+  color_jitter_prob: 0.5
+  gaussian_blur_prob: 0.2
+  random_erasing_prob: 0.1
+  scale_jitter:
+    enabled: true
+    min_scale: 0.85
+    max_scale: 1.15
+
+thresholds:
+  score_threshold: 0.25
+  nms_threshold: 0.50
+  iou_match_threshold: 0.50
+
+export:
+  format: coreml
+  precision: fp16

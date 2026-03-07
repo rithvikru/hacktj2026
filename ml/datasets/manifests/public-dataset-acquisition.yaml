@@ -1,0 +1,246 @@
+version: 1
+root_dir: datasets/external/public
+datasets:
+  - dataset_id: open_images_v7
+    priority: required
+    tracks:
+      - M1
+      - M3
+    access_type: direct_download
+    official_pages:
+      homepage: https://storage.googleapis.com/openimages/web/index.html
+      download: https://storage.googleapis.com/openimages/web/download_v7.html
+    target_path: datasets/external/public/open-images-v7
+    required_assets:
+      - class_descriptions
+      - bbox_annotations
+      - segmentation_annotations
+    initial_subset_classes:
+      positive_bootstrap:
+        - Remote control
+        - Mobile phone
+        - Glasses
+      context_and_negative:
+        - Backpack
+        - Drawer
+        - Bed
+        - Couch
+        - Headphones
+    notes:
+      - Public coverage is weak for airpods_case, wallet, keys, and charger.
+      - Use this dataset for bootstrap, not for final label coverage.
+
+  - dataset_id: coco_2017
+    priority: required
+    tracks:
+      - M1
+      - M3
+    access_type: direct_download
+    official_pages:
+      homepage: https://cocodataset.org/#home
+      download: https://cocodataset.org/#download
+    target_path: datasets/external/public/coco
+    required_assets:
+      - train2017_images
+      - val2017_images
+      - annotations_trainval2017
+    optional_assets:
+      - panoptic_annotations
+      - stuff_annotations
+
+  - dataset_id: objects365
+    priority: required
+    tracks:
+      - M1
+    access_type: direct_download
+    official_pages:
+      homepage: https://www.objects365.org/download.html
+    target_path: datasets/external/public/objects365
+    required_assets:
+      - train_images
+      - val_images
+      - annotations
+    notes:
+      - Official page states academic-purpose usage and Flickr-term constraints.
+
+  - dataset_id: lvis
+    priority: required
+    tracks:
+      - M1
+      - M3
+    access_type: direct_download
+    official_pages:
+      homepage: https://www.lvisdataset.org/
+    target_path: datasets/external/public/lvis
+    required_assets:
+      - annotations
+      - category_metadata
+    dependencies:
+      - coco_2017
+    notes:
+      - LVIS annotations depend on COCO images.
+
+  - dataset_id: visual_genome
+    priority: required
+    tracks:
+      - M2
+      - M4
+    access_type: manual_site_download
+    official_pages:
+      homepage: https://visualgenome.org/
+    target_path: datasets/external/public/visual-genome
+    required_assets:
+      - images
+      - region_descriptions
+      - objects
+      - relationships
+      - attributes
+    notes:
+      - Official site can be flaky; do not use unofficial mirrors without approval.
+
+  - dataset_id: flickr30k_entities
+    priority: required
+    tracks:
+      - M2
+      - M4
+    access_type: manual_site_download
+    official_pages:
+      homepage: https://bryanplummer.com/Flickr30kEntities/
+    target_path: datasets/external/public/flickr30k-entities
+    required_assets:
+      - annotation_package
+      - flickr30k_images
+
+  - dataset_id: refcoco
+    priority: required
+    tracks:
+      - M2
+      - M4
+    access_type: documented_loader
+    official_pages:
+      tfds_catalog: https://www.tensorflow.org/datasets/catalog/ref_coco
+    target_path: datasets/external/public/refcoco
+    required_assets:
+      - dataset_release
+      - split_metadata
+
+  - dataset_id: arkitscenes
+    priority: required
+    tracks:
+      - M5
+      - M6
+    access_type: direct_download
+    official_pages:
+      apple_research: https://machinelearning.apple.com/research/arkitscenes
+    target_path: datasets/external/public/arkitscenes
+    required_assets:
+      - rgbd_data
+      - poses
+      - metadata
+      - scene_geometry
+
+  - dataset_id: scannetpp
+    priority: required
+    tracks:
+      - M5
+      - M6
+    access_type: direct_download
+    official_pages:
+      documentation: https://scannetpp.mlsg.cit.tum.de/scannetpp/documentation
+    target_path: datasets/external/public/scannetpp
+    required_assets:
+      - default_download
+      - iphone_data
+      - meshes_and_semantics
+      - official_toolbox
+    notes:
+      - The default official download is already large; allocate storage first.
+
+  - dataset_id: scannet
+    priority: recommended
+    tracks:
+      - M5
+      - M6
+    access_type: terms_request_required
+    official_pages:
+      repo: https://github.com/ScanNet/ScanNet
+    target_path: datasets/external/public/scannet
+
+  - dataset_id: matterport3d
+    priority: recommended
+    tracks:
+      - M5
+      - M6
+    access_type: terms_request_required
+    official_pages:
+      project: https://niessner.github.io/Matterport/
+    target_path: datasets/external/public/matterport3d
+
+  - dataset_id: hm3d
+    priority: recommended
+    tracks:
+      - M5
+      - M7
+    access_type: terms_request_required
+    official_pages:
+      dataset: https://aihabitat.org/datasets/hm3d/
+    target_path: datasets/external/public/hm3d
+
+  - dataset_id: ego4d
+    priority: optional
+    tracks:
+      - M7
+    access_type: terms_request_required
+    official_pages:
+      homepage: https://ego4d-data.org/
+    target_path: datasets/external/public/ego4d
+    notes:
+      - Use only for interaction priors, not as direct hidden-search supervision.
+
+  - dataset_id: epic_kitchens
+    priority: optional
+    tracks:
+      - M7
+    access_type: manual_site_download
+    official_pages:
+      homepage: https://epic-kitchens.github.io/2023
+    target_path: datasets/external/public/epic-kitchens
+    notes:
+      - Secondary egocentric prior source.
+
+  - dataset_id: objaverse
+    priority: optional
+    tracks:
+      - M1
+      - M3
+      - M6
+    access_type: direct_download
+    official_pages:
+      homepage: https://objaverse.allenai.org/
+    target_path: datasets/external/public/synthetic/objaverse
+    notes:
+      - Synthetic augmentation source only.
+
+  - dataset_id: procthor
+    priority: optional
+    tracks:
+      - M7
+    access_type: direct_download
+    official_pages:
+      homepage: https://procthor.allenai.org/
+    target_path: datasets/external/public/synthetic/procthor
+    notes:
+      - Use for candidate-region simulation only.
+
+  - dataset_id: blenderproc
+    priority: optional
+    tracks:
+      - M1
+      - M3
+      - M7
+    access_type: direct_download
+    official_pages:
+      homepage: https://dlr-rm.github.io/BlenderProc/index.html
+    target_path: datasets/external/public/synthetic/blenderproc
+    notes:
+      - Rendering pipeline, not a dataset on its own.
