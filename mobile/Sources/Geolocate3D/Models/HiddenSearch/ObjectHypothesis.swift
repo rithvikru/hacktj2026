@@ -1,5 +1,6 @@
 import SwiftData
 import Foundation
+import simd
 
 @Model
 final class ObjectHypothesis {
@@ -26,13 +27,20 @@ final class ObjectHypothesis {
         }
     }
 
-    init(queryLabel: String, type: HypothesisType, rank: Int,
-         confidence: Double, reasons: [String]) {
+    init(
+        queryLabel: String,
+        type: HypothesisType,
+        rank: Int,
+        confidence: Double,
+        reasons: [String],
+        transform: simd_float4x4? = nil
+    ) {
         self.id = UUID()
         self.queryLabel = queryLabel
         self.hypothesisTypeRaw = type.rawValue
         self.rank = rank
         self.confidence = confidence
+        self.transformData = transform?.toData()
         self.reasonCodes = reasons
         self.generatedAt = Date()
     }

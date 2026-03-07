@@ -1,8 +1,6 @@
 import Foundation
 import simd
 
-/// HTTP client for the FastAPI backend.
-/// Handles room uploads, reconstruction polling, open-vocabulary search, and query execution.
 @Observable
 @MainActor
 final class BackendClient {
@@ -18,8 +16,6 @@ final class BackendClient {
         config.timeoutIntervalForRequest = 30
         self.session = URLSession(configuration: config)
     }
-
-    // MARK: - Room Operations
 
     func createRoom(id preferredRoomID: UUID? = nil, name: String, metadata: [String: String] = [:]) async throws -> UUID {
         let url = baseURL.appendingPathComponent("rooms")
@@ -66,8 +62,6 @@ final class BackendClient {
         return try JSONDecoder().decode(ReconstructionAssetsResponse.self, from: data)
     }
 
-    // MARK: - Search Operations
-
     func openVocabSearch(roomID: UUID, query: String) async throws -> [BackendSearchResult] {
         let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/open-vocab-search")
         var request = URLRequest(url: url)
@@ -102,7 +96,24 @@ final class BackendClient {
         return try decoder.decode(BackendQueryResponse.self, from: data)
     }
 
-    func routeRoom(
+    func chat(roomID: UUID, query: String, messages: [BackendChatMessage] = []) async throws -> BackendChatResponse {
+        let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/chat")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            ChatRequest(
+                queryText: query,
+                roomID: roomID.uuidString,
+                messages: messages
+            )
+        )
+
+        let (data, _) = try await session.data(for: request)
+        return try decoder.decode(BackendChatResponse.self, from: data)
+    }
+
+    func route(
         roomID: UUID,
         startWorldTransform: simd_float4x4,
         targetWorldTransform: simd_float4x4? = nil,
@@ -128,7 +139,21 @@ final class BackendClient {
         return try decoder.decode(BackendRouteResponse.self, from: data)
     }
 
-    // MARK: - Connection Check
+    func downloadAsset(from assetPath: String, suggestedFileName: String? = nil, into directory: URL) async throws -> URL {
+        let resolvedURL = try resolvedAssetURL(for: assetPath)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileName = suggestedFileName ?? resolvedURL.lastPathComponent
+        let destinationURL = directory.appendingPathComponent(fileName)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            return destinationURL
+        }
+
+        let (data, _) = try await session.data(from: resolvedURL)
+        try data.write(to: destinationURL, options: [.atomic])
+        return destinationURL
+    }
 
     func checkConnection() async {
         do {
@@ -190,6 +215,20 @@ final class BackendClient {
         return bundleURL.deletingLastPathComponent()
     }
 
+    private func resolvedAssetURL(for assetPath: String) throws -> URL {
+        if let directURL = URL(string: assetPath), let scheme = directURL.scheme, !scheme.isEmpty {
+            return directURL
+        }
+        if FileManager.default.fileExists(atPath: assetPath) {
+            return URL(fileURLWithPath: assetPath)
+        }
+        let trimmedPath = assetPath.hasPrefix("/") ? String(assetPath.dropFirst()) : assetPath
+        guard !trimmedPath.isEmpty else {
+            throw URLError(.badURL)
+        }
+        return baseURL.appendingPathComponent(trimmedPath)
+    }
+
     private func appendDirectoryFiles(
         fieldName: String,
         directoryURL: URL,
@@ -230,8 +269,6 @@ final class BackendClient {
         body.appendUTF8("\r\n")
     }
 }
-
-// MARK: - Response Types
 
 private struct CreateRoomResponse: Decodable {
     let roomID: UUID
@@ -380,36 +417,70 @@ struct BackendQueryResponse: Decodable {
     }
 }
 
-struct BackendRouteResponse: Decodable {
-    let reachable: Bool
-    let reason: String
-    let targetLabel: String?
-    let snappedGoalWorldTransform: [Float]?
-    let waypoints: [BackendRouteWaypoint]
+struct BackendChatMessage: Codable, Identifiable {
+    enum Role: String, Codable {
+        case system, user, assistant, tool
+    }
+
+    let id: UUID
+    let role: Role
+    let content: String
+
+    init(id: UUID = UUID(), role: Role, content: String) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case reachable
-        case reason
-        case targetLabel
-        case target_label
-        case snappedGoalWorldTransform
-        case snapped_goal_world_transform16
-        case snappedGoalWorldTransform16
-        case waypoints
+        case role
+        case content
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        reachable = try container.decodeIfPresent(Bool.self, forKey: .reachable) ?? false
-        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? "unknown"
-        targetLabel =
-            try container.decodeIfPresent(String.self, forKey: .targetLabel) ??
-            (try container.decodeIfPresent(String.self, forKey: .target_label))
-        snappedGoalWorldTransform =
-            try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform) ??
-            (try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform16)) ??
-            (try container.decodeIfPresent([Float].self, forKey: .snapped_goal_world_transform16))
-        waypoints = try container.decodeIfPresent([BackendRouteWaypoint].self, forKey: .waypoints) ?? []
+        id = UUID()
+        role = try container.decode(Role.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encode(content, forKey: .content)
+    }
+}
+
+struct BackendChatResponse: Decodable {
+    let roomID: UUID?
+    let reply: BackendChatMessage
+    let plannerSummary: String?
+    let provider: String
+    let model: String
+
+    private enum CodingKeys: String, CodingKey {
+        case roomID
+        case roomId
+        case room_id
+        case reply
+        case plannerSummary
+        case planner_summary
+        case provider
+        case model
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        roomID =
+            try container.decodeIfPresent(UUID.self, forKey: .roomID) ??
+            (try container.decodeIfPresent(UUID.self, forKey: .roomId)) ??
+            (try container.decodeIfPresent(UUID.self, forKey: .room_id))
+        reply = try container.decode(BackendChatMessage.self, forKey: .reply)
+        plannerSummary =
+            try container.decodeIfPresent(String.self, forKey: .plannerSummary) ??
+            (try container.decodeIfPresent(String.self, forKey: .planner_summary))
+        provider = try container.decodeIfPresent(String.self, forKey: .provider) ?? "backend"
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? "unknown"
     }
 }
 
@@ -419,6 +490,14 @@ struct BackendRouteWaypoint: Decodable, Identifiable {
     let y: Float
     let z: Float
     let worldTransform: [Float]
+
+    init(id: UUID = UUID(), x: Float, y: Float, z: Float, worldTransform: [Float]) {
+        self.id = id
+        self.x = x
+        self.y = y
+        self.z = z
+        self.worldTransform = worldTransform
+    }
 
     private enum CodingKeys: String, CodingKey {
         case x
@@ -445,11 +524,60 @@ struct BackendRouteWaypoint: Decodable, Identifiable {
     }
 }
 
+struct BackendRouteResponse: Decodable {
+    let reachable: Bool
+    let reason: String
+    let targetLabel: String?
+    let snappedGoalWorldTransform: [Float]?
+    let waypoints: [BackendRouteWaypoint]
+
+    private enum CodingKeys: String, CodingKey {
+        case reachable
+        case reason
+        case targetLabel
+        case target_label
+        case snappedGoalWorldTransform
+        case snappedGoalWorldTransform16
+        case snapped_goal_world_transform16
+        case waypoints
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reachable = try container.decodeIfPresent(Bool.self, forKey: .reachable) ?? false
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? "route unavailable"
+        targetLabel =
+            try container.decodeIfPresent(String.self, forKey: .targetLabel) ??
+            (try container.decodeIfPresent(String.self, forKey: .target_label))
+        snappedGoalWorldTransform =
+            try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform) ??
+            (try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform16)) ??
+            (try container.decodeIfPresent([Float].self, forKey: .snapped_goal_world_transform16))
+        waypoints = try container.decodeIfPresent([BackendRouteWaypoint].self, forKey: .waypoints) ?? []
+    }
+}
+
 private struct QueryRequest: Encodable {
     let queryText: String
 
     private enum CodingKeys: String, CodingKey {
         case queryText = "query_text"
+    }
+}
+
+private struct ChatRequest: Encodable {
+    let queryText: String
+    let roomID: String
+    let messages: [BackendChatMessage]
+    let includePlannerContext = true
+    let includeQueryResult = true
+
+    private enum CodingKeys: String, CodingKey {
+        case queryText = "query_text"
+        case roomID = "room_id"
+        case messages
+        case includePlannerContext = "include_planner_context"
+        case includeQueryResult = "include_query_result"
     }
 }
 

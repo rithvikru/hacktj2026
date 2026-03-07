@@ -9,6 +9,18 @@ struct QueryHistoryEntry: Identifiable {
     let timestamp: Date
 }
 
+struct QueryConversationEntry: Identifiable {
+    enum Role {
+        case user
+        case assistant
+    }
+
+    let id: UUID
+    let role: Role
+    let content: String
+    let subtitle: String?
+}
+
 @Observable
 @MainActor
 final class QueryViewModel {
@@ -17,6 +29,7 @@ final class QueryViewModel {
     var isListening = false
     var transcribedText = ""
     var isProcessing = false
+    var conversation: [QueryConversationEntry] = []
 
     let suggestions = [
         "Where are my keys?",
@@ -39,11 +52,20 @@ final class QueryViewModel {
     }
 
     func execute(query: String, roomID: UUID?, modelContext: ModelContext, backendClient: BackendClient) async {
-        guard !query.isEmpty else { return }
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return }
         isProcessing = true
+        conversation.append(
+            QueryConversationEntry(
+                id: UUID(),
+                role: .user,
+                content: trimmedQuery,
+                subtitle: nil
+            )
+        )
 
         // Parse intent
-        let intent = intentParser.parse(query, roomID: roomID)
+        let intent = intentParser.parse(trimmedQuery, roomID: roomID)
 
         // Plan and execute search
         let execution = await searchPlanner.execute(
@@ -55,11 +77,17 @@ final class QueryViewModel {
         let result = execution.result
 
         currentResult = result
+        await generateAssistantReply(
+            query: trimmedQuery,
+            roomID: roomID,
+            result: result,
+            backendClient: backendClient
+        )
 
         // Add to history
         history.insert(QueryHistoryEntry(
             id: UUID(),
-            query: query,
+            query: trimmedQuery,
             resultSummary: result.explanation,
             timestamp: Date()
         ), at: 0)
@@ -70,6 +98,64 @@ final class QueryViewModel {
         }
 
         isProcessing = false
+    }
+
+    private func generateAssistantReply(
+        query: String,
+        roomID: UUID?,
+        result: SearchResult,
+        backendClient: BackendClient
+    ) async {
+        guard let roomID else {
+            conversation.append(
+                QueryConversationEntry(
+                    id: UUID(),
+                    role: .assistant,
+                    content: result.explanation,
+                    subtitle: "Local"
+                )
+            )
+            trimConversation()
+            return
+        }
+
+        do {
+            let priorMessages = conversation.map { entry in
+                BackendChatMessage(
+                    role: entry.role == .user ? .user : .assistant,
+                    content: entry.content
+                )
+            }
+            let response = try await backendClient.chat(
+                roomID: roomID,
+                query: query,
+                messages: priorMessages
+            )
+            conversation.append(
+                QueryConversationEntry(
+                    id: UUID(),
+                    role: .assistant,
+                    content: response.reply.content,
+                    subtitle: "\(response.provider) • \(response.model)"
+                )
+            )
+        } catch {
+            conversation.append(
+                QueryConversationEntry(
+                    id: UUID(),
+                    role: .assistant,
+                    content: result.explanation,
+                    subtitle: "Fallback"
+                )
+            )
+        }
+        trimConversation()
+    }
+
+    private func trimConversation() {
+        if conversation.count > 12 {
+            conversation = Array(conversation.suffix(12))
+        }
     }
 
     private func startListening() {

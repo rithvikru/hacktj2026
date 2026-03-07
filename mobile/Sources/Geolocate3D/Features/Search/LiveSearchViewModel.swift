@@ -32,7 +32,7 @@ struct ScreenObservation: Identifiable {
     let confidenceClass: DetectionConfidenceClass
 }
 
-struct RouteWaypoint: Identifiable {
+struct RouteWaypointOverlay: Identifiable {
     let id: UUID
     let index: Int
     let worldTransform: simd_float4x4
@@ -51,20 +51,20 @@ struct RouteWaypoint: Identifiable {
 final class LiveSearchViewModel {
     var activeObservations: [ActiveObservation] = []
     var screenProjectedObservations: [ScreenObservation] = []
-    var routeWaypoints: [RouteWaypoint] = []
-    var routeStatusText: String = ""
-    var isSearching = false
-    var currentQuery: String = ""
     var currentResult: SearchResult?
+    var currentQuery: String = ""
+    var isSearching = false
+    var routeWaypoints: [RouteWaypointOverlay] = []
+    var routeStatusText: String?
 
     private let intentParser = IntentParser()
     private let searchPlanner = SearchPlanner()
 
-    @ObservationIgnored var currentCameraTransform: simd_float4x4?
     @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
     @ObservationIgnored private var routeRootAnchor: AnchorEntity?
     @ObservationIgnored private var routeVersion = 0
     @ObservationIgnored private var renderedRouteVersion = -1
+    @ObservationIgnored private var currentCameraTransform: simd_float4x4?
 
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
@@ -134,12 +134,13 @@ final class LiveSearchViewModel {
                 arView.scene.removeAnchor(routeRootAnchor)
             }
         }
+
         entityMap.removeAll()
         routeRootAnchor = nil
         activeObservations.removeAll()
         screenProjectedObservations.removeAll()
         routeWaypoints.removeAll()
-        routeStatusText = ""
+        routeStatusText = nil
         currentCameraTransform = nil
         routeVersion = 0
         renderedRouteVersion = -1
@@ -220,7 +221,7 @@ final class LiveSearchViewModel {
         roomID: UUID?,
         backendClient: BackendClient
     ) async {
-        clearRoute(status: "")
+        clearRoute(status: nil)
 
         guard let roomID else { return }
         guard execution.result.resultType != .noResult else { return }
@@ -234,7 +235,7 @@ final class LiveSearchViewModel {
         let targetTransform = bestObservation?.worldTransform
 
         do {
-            let route = try await backendClient.routeRoom(
+            let route = try await backendClient.route(
                 roomID: roomID,
                 startWorldTransform: startTransform,
                 targetWorldTransform: targetTransform,
@@ -246,11 +247,11 @@ final class LiveSearchViewModel {
                 return
             }
 
-            let waypoints = route.waypoints.enumerated().compactMap { index, waypoint -> RouteWaypoint? in
+            let waypoints = route.waypoints.enumerated().compactMap { index, waypoint -> RouteWaypointOverlay? in
                 guard let matrix = simd_float4x4.fromArray(waypoint.worldTransform) else {
                     return nil
                 }
-                return RouteWaypoint(
+                return RouteWaypointOverlay(
                     id: waypoint.id,
                     index: index,
                     worldTransform: matrix
@@ -276,7 +277,7 @@ final class LiveSearchViewModel {
         }
     }
 
-    private func clearRoute(status: String) {
+    private func clearRoute(status: String?) {
         routeWaypoints.removeAll()
         routeStatusText = status
         routeVersion += 1

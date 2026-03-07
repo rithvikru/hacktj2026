@@ -58,9 +58,30 @@ struct QueryConsoleView: View {
 
                 // Results / History
                 ScrollView {
+                    if !viewModel.conversation.isEmpty {
+                        VStack(spacing: 12) {
+                            ForEach(viewModel.conversation) { entry in
+                                QueryConversationBubble(entry: entry)
+                            }
+                        }
+                        .padding(16)
+                    }
+
                     if let result = viewModel.currentResult {
                         QueryResultView(result: result)
                             .padding(16)
+                    }
+
+                    if viewModel.isProcessing {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .tint(.spatialCyan)
+                            Text("Thinking through the room...")
+                                .font(SpatialFont.caption)
+                                .foregroundStyle(.dimLabel)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
                     }
 
                     // Suggestions
@@ -124,5 +145,39 @@ struct QueryConsoleView: View {
                 backendClient: backendClient
             )
         }
+    }
+}
+
+private struct QueryConversationBubble: View {
+    let entry: QueryConversationEntry
+
+    var body: some View {
+        VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 6) {
+            Text(entry.role == .user ? "You" : "Assistant")
+                .font(SpatialFont.caption)
+                .foregroundStyle(.dimLabel)
+
+            Text(entry.content)
+                .font(SpatialFont.body)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: entry.role == .user ? .trailing : .leading)
+
+            if let subtitle = entry.subtitle {
+                Text(subtitle)
+                    .font(SpatialFont.caption)
+                    .foregroundStyle(.dimLabel)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: entry.role == .user ? .trailing : .leading)
+        .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, entry.role == .user ? 40 : 0)
+    }
+
+    private var bubbleBackground: AnyShapeStyle {
+        if entry.role == .user {
+            return AnyShapeStyle(Color.glassWhite)
+        }
+        return AnyShapeStyle(.ultraThinMaterial)
     }
 }

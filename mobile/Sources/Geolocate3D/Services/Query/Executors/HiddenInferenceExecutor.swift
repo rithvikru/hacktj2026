@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// Rule-based inference engine that generates probable hidden-object locations
 /// based on scene graph structure, observation history, and object priors.
@@ -11,6 +12,7 @@ struct HiddenInferenceExecutor {
         let rank: Int
         let confidence: Double
         let reasons: [String]
+        let worldTransform: simd_float4x4
     }
 
     /// Infer likely locations for a queried object based on available data.
@@ -30,7 +32,8 @@ struct HiddenInferenceExecutor {
                 reasons: [
                     "Object was last observed here at \(lastSeen.observedAt.formatted(date: .abbreviated, time: .shortened))",
                     "Confidence: \(Int(lastSeen.confidence * 100))% at last detection"
-                ]
+                ],
+                worldTransform: lastSeen.worldTransform
             ))
         }
 
@@ -49,7 +52,8 @@ struct HiddenInferenceExecutor {
                     reasons: [
                         "Objects like \"\(query)\" are commonly found on/in \(container.label)",
                         "Scene graph contains this as a \(container.nodeType.rawValue)"
-                    ]
+                    ],
+                    worldTransform: raisedSurfaceTransform(for: container)
                 ))
             }
         }
@@ -64,7 +68,8 @@ struct HiddenInferenceExecutor {
                 reasons: [
                     "No prior observations of \"\(query)\" in this room",
                     "Generic estimate based on room layout"
-                ]
+                ],
+                worldTransform: inferredRoomCenterTransform(observations: observations, sceneNodes: sceneNodes)
             ))
         }
 
@@ -76,7 +81,8 @@ struct HiddenInferenceExecutor {
                 type: result.type,
                 rank: index + 1,
                 confidence: result.confidence,
-                reasons: result.reasons
+                reasons: result.reasons,
+                worldTransform: result.worldTransform
             )
         }
     }
@@ -107,5 +113,36 @@ struct HiddenInferenceExecutor {
         case .furniture: return 0.12
         default: return 0.0
         }
+    }
+
+    private func raisedSurfaceTransform(for container: SceneNode) -> simd_float4x4 {
+        let baseTransform = simd_float4x4.fromData(container.worldTransform16) ?? matrix_identity_float4x4
+        var adjusted = baseTransform
+        let yOffset = max(container.extentXYZ.dropFirst().first ?? 0, 0.05) * 0.5 + 0.08
+        adjusted.columns.3.y += yOffset
+        return adjusted
+    }
+
+    private func inferredRoomCenterTransform(
+        observations: [ObjectObservation],
+        sceneNodes: [SceneNode]
+    ) -> simd_float4x4 {
+        let nodePositions = sceneNodes.compactMap { node -> SIMD3<Float>? in
+            guard let transform = simd_float4x4.fromData(node.worldTransform16) else { return nil }
+            return SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+        }
+        let observationPositions = observations.map {
+            SIMD3($0.worldTransform.columns.3.x, $0.worldTransform.columns.3.y, $0.worldTransform.columns.3.z)
+        }
+        let samples = nodePositions + observationPositions
+        guard !samples.isEmpty else { return matrix_identity_float4x4 }
+
+        let total = samples.reduce(SIMD3<Float>(repeating: 0)) { partial, sample in
+            partial + sample
+        }
+        let center = total / Float(samples.count)
+        var transform = matrix_identity_float4x4
+        transform.columns.3 = SIMD4(center.x, center.y, center.z, 1)
+        return transform
     }
 }

@@ -44,6 +44,17 @@ struct RoomPersistenceService {
         roomDirectory(for: roomID).appendingPathComponent("frame-bundles")
     }
 
+    func reconstructionDirectory(for roomID: UUID) -> URL {
+        roomDirectory(for: roomID).appendingPathComponent("reconstruction")
+    }
+
+    @discardableResult
+    func createReconstructionDirectory(roomID: UUID) throws -> URL {
+        let directory = reconstructionDirectory(for: roomID)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
     func frameBundleDirectory(for roomID: UUID, sessionID: UUID) -> URL {
         frameBundlesBaseDirectory(for: roomID).appendingPathComponent(sessionID.uuidString)
     }
