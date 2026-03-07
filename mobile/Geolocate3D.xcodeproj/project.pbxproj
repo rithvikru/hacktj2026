@@ -141,7 +141,7 @@
 		B5E09E2B237A65308D2D0EDF /* QueryResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryResultView.swift; sourceTree = "<group>"; };
 		B8D6CD4C91EC339F3AB2D359 /* RelocalizationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelocalizationMonitor.swift; sourceTree = "<group>"; };
 		B9E3087DEF74E238B4F0BED7 /* FrameBundleManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameBundleManifest.swift; sourceTree = "<group>"; };
-		BA1AE8C4586A0AB85ADD448E /* Geolocate3D.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Geolocate3D.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA1AE8C4586A0AB85ADD448E /* Geolocate3D.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Geolocate3D.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C303E44071E7AEAAD3C4B2EE /* SceneNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneNode.swift; sourceTree = "<group>"; };
 		C35B18FFAAFFE10CA5EF3757 /* ARViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARViewCoordinator.swift; sourceTree = "<group>"; };
 		C75BC24364ECFC348C61471B /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
@@ -621,9 +621,11 @@
 		1696AC29AD18D8939838D75A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					CODE_SIGN_IDENTITY = "Apple Development";
+					"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+					CODE_SIGN_STYLE = Automatic;
+					DEVELOPMENT_TEAM = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Geolocate3D needs camera access for AR room scanning and object detection.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -760,9 +762,11 @@
 		FB7899F1735238C40CEDD681 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+					CODE_SIGN_IDENTITY = "Apple Development";
+					"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = NO;
+					CODE_SIGN_STYLE = Automatic;
+					DEVELOPMENT_TEAM = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Geolocate3D needs camera access for AR room scanning and object detection.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

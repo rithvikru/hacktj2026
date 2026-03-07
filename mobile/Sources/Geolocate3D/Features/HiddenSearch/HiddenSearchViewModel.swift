@@ -7,6 +7,7 @@ final class HiddenSearchViewModel {
     let roomID: UUID
     var hypotheses: [ObjectHypothesis] = []
     var isLoading: Bool = false
+    var lastQuery: String = ""
 
     init(roomID: UUID) {
         self.roomID = roomID
@@ -24,24 +25,37 @@ final class HiddenSearchViewModel {
 
     /// Run the hidden inference engine for a query and persist results.
     func runInference(query: String, modelContext: ModelContext) async {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return }
         isLoading = true
+        lastQuery = trimmedQuery
         let executor = HiddenInferenceExecutor(roomID: roomID)
 
         let observations = fetchObservations(modelContext: modelContext)
         let sceneNodes = fetchSceneNodes(modelContext: modelContext)
-        let results = executor.infer(query: query, observations: observations, sceneNodes: sceneNodes)
+        let results = executor.infer(query: trimmedQuery, observations: observations, sceneNodes: sceneNodes)
+        let existingDescriptor = FetchDescriptor<ObjectHypothesis>(
+            predicate: #Predicate { $0.room?.id == roomID }
+        )
+        let existingHypotheses = (try? modelContext.fetch(existingDescriptor)) ?? []
+        for hypothesis in existingHypotheses {
+            modelContext.delete(hypothesis)
+        }
+
+        let room = try? modelContext.fetch(
+            FetchDescriptor<RoomRecord>(predicate: #Predicate { $0.id == roomID })
+        ).first
 
         for result in results {
             let hypothesis = ObjectHypothesis(
-                queryLabel: result.label,
+                queryLabel: trimmedQuery,
                 type: result.type,
                 rank: result.rank,
                 confidence: result.confidence,
-                reasons: result.reasons
+                reasons: result.reasons,
+                transform: result.worldTransform
             )
-            if let room = try? modelContext.fetch(
-                FetchDescriptor<RoomRecord>(predicate: #Predicate { $0.id == roomID })
-            ).first {
+            if let room {
                 hypothesis.room = room
             }
             modelContext.insert(hypothesis)

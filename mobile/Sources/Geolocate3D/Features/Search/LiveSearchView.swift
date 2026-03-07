@@ -92,6 +92,12 @@ struct LiveSearchView: View {
                         Text(result.explanation)
                             .font(SpatialFont.caption)
                             .foregroundStyle(.dimLabel)
+                        if let routeStatusText = viewModel.routeStatusText {
+                            Label(routeStatusText, systemImage: viewModel.routeWaypoints.isEmpty ? "point.3.connected.trianglepath.dotted" : "arrow.triangle.branch")
+                                .font(SpatialFont.caption)
+                                .foregroundStyle(.spatialCyan)
+                                .padding(.top, 4)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(16)

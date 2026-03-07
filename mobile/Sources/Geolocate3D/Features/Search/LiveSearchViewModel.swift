@@ -30,6 +30,20 @@ struct ScreenObservation: Identifiable {
     let confidenceClass: DetectionConfidenceClass
 }
 
+struct RouteWaypointOverlay: Identifiable {
+    let id: UUID
+    let index: Int
+    let worldTransform: simd_float4x4
+
+    var position: SIMD3<Float> {
+        SIMD3(
+            worldTransform.columns.3.x,
+            worldTransform.columns.3.y,
+            worldTransform.columns.3.z
+        )
+    }
+}
+
 @Observable
 @MainActor
 final class LiveSearchViewModel {
@@ -38,23 +52,32 @@ final class LiveSearchViewModel {
     var isSearching = false
     var currentQuery: String = ""
     var currentResult: SearchResult?
+    var routeWaypoints: [RouteWaypointOverlay] = []
+    var routeStatusText: String?
 
     private let intentParser = IntentParser()
     private let searchPlanner = SearchPlanner()
 
     // Entity tracking — maps observation ID to the RealityKit anchor entity
     @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
+    @ObservationIgnored private var routeEntityMap = Dictionary<UUID, AnchorEntity>()
+    @ObservationIgnored private var currentCameraTransform: simd_float4x4?
 
     /// Sync 3D pin entities into the ARView scene for each active observation.
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
 
         let activeIDs = Set(activeObservations.map(\.id))
+        let routeIDs = Set(routeWaypoints.map(\.id))
 
         // Remove stale entities
         for (id, entity) in entityMap where !activeIDs.contains(id) {
             arView.scene.removeAnchor(entity)
             entityMap.removeValue(forKey: id)
+        }
+        for (id, entity) in routeEntityMap where !routeIDs.contains(id) {
+            arView.scene.removeAnchor(entity)
+            routeEntityMap.removeValue(forKey: id)
         }
 
         // Add or update entities
@@ -73,6 +96,25 @@ final class LiveSearchViewModel {
                 arView.scene.addAnchor(anchor)
                 entityMap[obs.id] = anchor
             }
+        }
+
+        for waypoint in routeWaypoints {
+            if let existing = routeEntityMap[waypoint.id] {
+                existing.transform = Transform(matrix: waypoint.worldTransform)
+                continue
+            }
+
+            let anchor = AnchorEntity()
+            anchor.transform = Transform(matrix: waypoint.worldTransform)
+            anchor.name = waypoint.id.uuidString
+
+            let marker = ModelEntity(
+                mesh: .generateBox(size: 0.03),
+                materials: [SimpleMaterial(color: .yellow, isMetallic: false)]
+            )
+            anchor.addChild(marker)
+            arView.scene.addAnchor(anchor)
+            routeEntityMap[waypoint.id] = anchor
         }
     }
 
@@ -113,10 +155,21 @@ final class LiveSearchViewModel {
             for (_, entity) in entityMap {
                 arView.scene.removeAnchor(entity)
             }
+            for (_, entity) in routeEntityMap {
+                arView.scene.removeAnchor(entity)
+            }
         }
         entityMap.removeAll()
+        routeEntityMap.removeAll()
         activeObservations.removeAll()
         screenProjectedObservations.removeAll()
+        routeWaypoints.removeAll()
+        routeStatusText = nil
+        currentCameraTransform = nil
+    }
+
+    func updateCameraTransform(_ transform: simd_float4x4) {
+        currentCameraTransform = transform
     }
 
     func executeSearch(
@@ -142,6 +195,7 @@ final class LiveSearchViewModel {
             from: execution.localObservations,
             backendResults: execution.backendResults
         )
+        await refreshRoute(roomID: roomID, backendClient: backendClient)
         isSearching = false
     }
 
@@ -173,5 +227,44 @@ final class LiveSearchViewModel {
         }
         active.append(contentsOf: backendObservations)
         return active.sorted { $0.confidence > $1.confidence }
+    }
+
+    private func refreshRoute(roomID: UUID?, backendClient: BackendClient) async {
+        routeWaypoints.removeAll()
+        routeStatusText = nil
+
+        guard let roomID else { return }
+        guard let startTransform = currentCameraTransform else {
+            routeStatusText = "Move the phone to establish route guidance."
+            return
+        }
+        guard let target = activeObservations.first else { return }
+
+        do {
+            let response = try await backendClient.route(
+                roomID: roomID,
+                startWorldTransform: startTransform,
+                targetWorldTransform: target.worldTransform,
+                targetLabel: target.label
+            )
+
+            if response.reachable {
+                routeWaypoints = response.waypoints.enumerated().compactMap { index, waypoint in
+                    guard let transform = simd_float4x4.fromArray(waypoint.worldTransform) else { return nil }
+                    return RouteWaypointOverlay(
+                        id: waypoint.id,
+                        index: index + 1,
+                        worldTransform: transform
+                    )
+                }
+                routeStatusText = routeWaypoints.isEmpty
+                    ? "Target located. Walk directly toward the marker."
+                    : "Route ready with \(routeWaypoints.count) waypoint\(routeWaypoints.count == 1 ? "" : "s")."
+            } else {
+                routeStatusText = response.reason.capitalized
+            }
+        } catch {
+            routeStatusText = "Route unavailable: \(error.localizedDescription)"
+        }
     }
 }
