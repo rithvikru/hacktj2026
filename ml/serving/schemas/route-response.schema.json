@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "RouteWaypointDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "worldTransform16": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "title": "Worldtransform16",
+          "type": "array"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "worldTransform16"
+      ],
+      "title": "RouteWaypointDTO",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "reachable": {
+      "title": "Reachable",
+      "type": "boolean"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "snappedGoalWorldTransform16": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Snappedgoalworldtransform16"
+    },
+    "targetLabel": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Targetlabel"
+    },
+    "waypoints": {
+      "items": {
+        "$ref": "#/$defs/RouteWaypointDTO"
+      },
+      "title": "Waypoints",
+      "type": "array"
+    }
+  },
+  "required": [
+    "reachable",
+    "reason"
+  ],
+  "title": "RouteResponseDTO",
+  "type": "object"
+}

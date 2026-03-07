@@ -13,6 +13,7 @@ from hacktj2026_ml.query_contracts import (
     QueryResponseDTO,
     SearchResultDTO,
 )
+from serving.api.app import RouteRequestDTO, RouteResponseDTO
 from hacktj2026_ml.contracts import HiddenHypothesisResult
 
 
@@ -29,6 +30,8 @@ def main() -> None:
         "query-response.schema.json": QueryResponseDTO,
         "chat-request.schema.json": ChatRequestDTO,
         "chat-response.schema.json": ChatResponseDTO,
+        "route-request.schema.json": RouteRequestDTO,
+        "route-response.schema.json": RouteResponseDTO,
         "open-vocab-search-request.schema.json": OpenVocabSearchRequest,
         "open-vocab-search-response.schema.json": OpenVocabSearchResponseDTO,
         "search-result.schema.json": SearchResultDTO,

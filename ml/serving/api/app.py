@@ -24,6 +24,7 @@ from hacktj2026_ml.query_contracts import (
     QueryResponseDTO,
 )
 from hacktj2026_ml.query_engine import QueryEngine, build_planner_request
+from hacktj2026_ml.route_planner import plan_route
 from hacktj2026_ml.toolkit import DefaultQueryToolkit
 from serving.scene_graph.builder import build_scene_graph
 from serving.storage.room_store import RoomStore
@@ -91,6 +92,29 @@ class RoomAssetsResponseDTO(APIDTOModel):
     scene_graph_version: int = 0
     frame_bundle_url: str | None = None
     updated_at: str
+
+
+class RouteRequestDTO(APIDTOModel):
+    start_world_transform16: list[float] = Field(min_length=16, max_length=16)
+    target_world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
+    target_label: str | None = None
+    grid_resolution_m: float = 0.20
+    obstacle_inflation_radius_m: float = 0.25
+
+
+class RouteWaypointDTO(APIDTOModel):
+    x: float
+    y: float
+    z: float
+    world_transform16: list[float] = Field(min_length=16, max_length=16)
+
+
+class RouteResponseDTO(APIDTOModel):
+    reachable: bool
+    reason: str
+    target_label: str | None = None
+    snapped_goal_world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
+    waypoints: list[RouteWaypointDTO] = Field(default_factory=list)
 
 
 class SimpleQueryBody(BaseModel):
@@ -231,6 +255,24 @@ def query_room(room_id: str, request: QueryRequest) -> dict:
 def chat_room(room_id: str, request: ChatRequestDTO) -> ChatResponseDTO:
     adjusted_request = request.model_copy(update={"room_id": room_id})
     return chat_service.chat(adjusted_request)
+
+
+@app.post("/rooms/{room_id}/route", response_model=RouteResponseDTO)
+def route_room(room_id: str, request: RouteRequestDTO) -> RouteResponseDTO:
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
+
+    route = plan_route(
+        room=room,
+        start_world_transform16=request.start_world_transform16,
+        target_world_transform16=request.target_world_transform16,
+        target_label=request.target_label,
+        grid_resolution_m=request.grid_resolution_m,
+        obstacle_inflation_radius_m=request.obstacle_inflation_radius_m,
+    )
+    return RouteResponseDTO(**route)
 
 
 @app.post("/rooms/{room_id}/open-vocab-search")
