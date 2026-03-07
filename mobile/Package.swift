@@ -7,8 +7,14 @@ let package = Package(
     platforms: [
         .iOS(.v17),
     ],
+    products: [
+        .library(
+            name: "Geolocate3D",
+            targets: ["Geolocate3D"]
+        ),
+    ],
     targets: [
-        .executableTarget(
+        .target(
             name: "Geolocate3D"
         ),
     ]

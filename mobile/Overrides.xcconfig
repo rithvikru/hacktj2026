@@ -1,0 +1,4 @@
+PRODUCT_BUNDLE_IDENTIFIER = com.hacktj2026.Geolocate3D
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_NSCameraUsageDescription = Geolocate3D needs camera access for AR room scanning and object detection.
+INFOPLIST_KEY_UILaunchScreen_Generation = YES

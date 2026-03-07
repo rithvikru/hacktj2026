@@ -1,0 +1,802 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0077B61E77BDBE7CDDAFF7A2 /* RoomPreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5CE0DCAFF2A6BDB34A1490 /* RoomPreviewCard.swift */; };
+		07563EDA288F73BD41BC671A /* SpatialButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843001B51580C7D3F7F33844 /* SpatialButton.swift */; };
+		0790785B39BABC60D87C1594 /* HypothesisType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D984005E697EFEB81999F4A /* HypothesisType.swift */; };
+		188B21B92B381E4CA756E6B7 /* QueryResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5E09E2B237A65308D2D0EDF /* QueryResultView.swift */; };
+		19CF4719CA518357CE8DEC4B /* ReconstructionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0522D37B573E8385286FE6F5 /* ReconstructionStatus.swift */; };
+		1BCE7133D881B44BA8E248F1 /* RoomRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70E9EA1264389600494FDB0A /* RoomRecord.swift */; };
+		221AA2F863EA2BF778E05716 /* SearchPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69FCDB4C0261A1850AEC92DA /* SearchPlanner.swift */; };
+		23ABEC5204C87FB5299E7446 /* TrackingStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8EE91712ACFA721312FBBD /* TrackingStatusBadge.swift */; };
+		254E639D62B8A62380806560 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72AFEBB77AC72023FB948669 /* RootTabView.swift */; };
+		2A6ADAE1D5942233FB12F5EE /* AnimatedWaveform.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4EF740BDD92E4EEE167048 /* AnimatedWaveform.swift */; };
+		2BD79C50DFF1EDF1877F42D1 /* SceneEdge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253D3CCAD18139C609114B34 /* SceneEdge.swift */; };
+		2C5F30CDD651E3CCC5407D01 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = C75BC24364ECFC348C61471B /* Typography.swift */; };
+		2E788F56CE366D48A0E6A001 /* HypothesisCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145DA70A2AAB27B34611B294 /* HypothesisCard.swift */; };
+		3031F61154F9CC361FF255D7 /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 483A4F1012B5C065EDA07B57 /* BackendClient.swift */; };
+		376ECB603755B6AF5C44C620 /* FloatingQueryBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 670AA22A4C1973D80848AE31 /* FloatingQueryBar.swift */; };
+		38BFFA11988A834E7373EFDE /* WorldMapStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C5F3A574DF21DC8D964129 /* WorldMapStore.swift */; };
+		3CDD103789B0849B2C96DB69 /* RelocalizationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8D6CD4C91EC339F3AB2D359 /* RelocalizationMonitor.swift */; };
+		3E7E6A2560E57080E054DA5A /* HiddenSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832A0CA8C8245627729EBF2F /* HiddenSearchViewModel.swift */; };
+		3F46387BBBC07B69ABA54BFD /* FrameRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD4BAB6D2156274992E0087 /* FrameRecord.swift */; };
+		41740ABD235A64A757378AD6 /* SceneNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = C303E44071E7AEAAD3C4B2EE /* SceneNode.swift */; };
+		429987121886BD64240817A1 /* SpeechRecognitionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F66ACEA9027B9EFE287253 /* SpeechRecognitionService.swift */; };
+		44D6EF43F931DCCA1DD56960 /* RoomPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFD8ABDF444A2FA156808B4 /* RoomPersistenceService.swift */; };
+		49F76154974A5C5E9BAC3128 /* LayerToggleBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08CA18F37732118E4E66627B /* LayerToggleBar.swift */; };
+		4CC361A8E88A2F3686015F58 /* IntentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3518C163E9711F80F6138F1A /* IntentParser.swift */; };
+		5A8FDC979EB564F07EAAA9B2 /* ObjectPrototype.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F58BC10E7AFB8365D535A65 /* ObjectPrototype.swift */; };
+		5B39466123CE9F4D60CA9393 /* ARViewCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C35B18FFAAFFE10CA5EF3757 /* ARViewCoordinator.swift */; };
+		5C22010765D272A6082034A3 /* ThermalMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9206F5440A6EB2BED2EEF5D /* ThermalMonitor.swift */; };
+		662F6E5F277CBFAAD998E2BD /* AppCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04234F3D7E212C8516C5B33 /* AppCoordinator.swift */; };
+		6699390F00134816E4111230 /* SearchResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E35F9D7F19A9BBC3291DBF /* SearchResult.swift */; };
+		66DA9E3191C22F6E251E4021 /* AppRoutes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CAB5D13A436DD4B5088C0BB /* AppRoutes.swift */; };
+		6761DF59CF9AD9761A7EACC5 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02204C6764CF91FF43A2B18 /* HomeView.swift */; };
+		679EFBFAFF419091269A5BED /* RoomCaptureViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA71B9C6F304AA67DE1E6EB /* RoomCaptureViewRepresentable.swift */; };
+		684DA352254F70CA01341E5B /* LiveSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC9188200CD5A2C7F9E4D52 /* LiveSearchViewModel.swift */; };
+		73FE5C86E28DC38C936A7EF3 /* SceneEdgeType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 325CA3E32E48E0D12A11A4CA /* SceneEdgeType.swift */; };
+		79E3305B78FA50202327ECAD /* StubViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4211E7A3D2FD83628E48F8DD /* StubViews.swift */; };
+		7E337536AD2712B622A6E615 /* RoomTwinViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9515AE69270670239B61B3 /* RoomTwinViewModel.swift */; };
+		83719DF1F8047D573EF03745 /* SearchClass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D511D1E0AB25E2F7E14302 /* SearchClass.swift */; };
+		8577EF7582D68FE2D832CA08 /* ConfidenceIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6002688F7D2A855A060B848F /* ConfidenceIndicator.swift */; };
+		8DD9A9DDE8DD815C120CF8E0 /* ObjectHypothesis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 178B9E18AA995777031A6001 /* ObjectHypothesis.swift */; };
+		957276BF93E2FF1749D25712 /* LiveSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA54AE6DE645ECEAC0ED6884 /* LiveSearchView.swift */; };
+		970A7530FD274AF58B0142A9 /* ScanStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9481B3C0A42FCAA4F67593C /* ScanStatusPill.swift */; };
+		98B2F511E389041CC0A24DF2 /* RoomStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB5D5245A295923642691951 /* RoomStore.swift */; };
+		9913C8AF3DA403AFE8837AEB /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4242D32D6DAD54980BFC34 /* HomeViewModel.swift */; };
+		A10FE5E442EA97DA90D22720 /* QueryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C531FA158A9A773718862A8 /* QueryViewModel.swift */; };
+		A269337B47A616141FDD88EF /* RoomHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B6E914227C7792F26F0EFB9 /* RoomHeatmapView.swift */; };
+		A4120E10E4EFF8DB88CE0C2A /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A23D0B5D2B870D4870AF2FC /* Colors.swift */; };
+		A79FAFC404E20670241F5C68 /* LocalObservationExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CDE1C80706514BC6EF4A776 /* LocalObservationExecutor.swift */; };
+		A96F5410F1B21E6B0DDC4E61 /* FrameBundleManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E3087DEF74E238B4F0BED7 /* FrameBundleManifest.swift */; };
+		B09B6F528A08B9D6B07D35D7 /* ScanCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB7F38DAF8F72D6881792A34 /* ScanCompletionSheet.swift */; };
+		B1950AA15257740EECDE8490 /* RoomTwinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16638469F873049E1092BE0 /* RoomTwinView.swift */; };
+		B1BC2B39E5CB43B71E1B26CF /* HiddenSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59CAB0C66C84699686CE2E70 /* HiddenSearchView.swift */; };
+		B524F95809607D2635B1F6B1 /* VisibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEA278DB0CD2FD22CFCC38A0 /* VisibilityState.swift */; };
+		BD19DC4D9F155DC7B515F1BA /* ObjectObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBE630BEEBFBF2CB87F178A /* ObjectObservation.swift */; };
+		C7C1CBAA74E85AFA5822C422 /* FrameBundleWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07E845A4C94CBFB2BE90A7F /* FrameBundleWriter.swift */; };
+		C8A46CDDE8FAD57E38EE816B /* ScanViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9401594AC869BC986402602 /* ScanViewModel.swift */; };
+		CCFC10E1F41DE3B27CB9E3B4 /* SIMDExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80FE9042414B98ABDFFF55D9 /* SIMDExtensions.swift */; };
+		CD496A1EAE591A13576D8C0F /* SpatialGlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4B2F14E02F13C929BD7EAD /* SpatialGlow.swift */; };
+		D50B4261BD98871AB5E85B79 /* QueryConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAC931E67F347645BD2CD61B /* QueryConsoleView.swift */; };
+		D6869786D5D402F5E7E5436D /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F29371FBC297FA1399DAEAA /* EmptyStateView.swift */; };
+		D6D334C26ADFA04401007CF0 /* GlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2C22233C1C69998F061873 /* GlassCard.swift */; };
+		D85037750E47142E55BB7351 /* ObjectTooltipOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F9114CC4E7DF362889FE56 /* ObjectTooltipOverlay.swift */; };
+		DFF7B6341807B9168D3C0229 /* GlassBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EDB5E772EC361A6598E7D41 /* GlassBackground.swift */; };
+		E22BAAEFA614C59E95DC94D2 /* ObservationSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71703B5B4C74BE9585752A37 /* ObservationSource.swift */; };
+		E3CB0323611429142F9DA6E4 /* SceneViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02FE527774FAF70AB43195E0 /* SceneViewRepresentable.swift */; };
+		E42B9D519C643DACCFE55AFE /* SceneNodeType.swift in Sources */ = {isa = PBXBuildFile; fileRef = F695E523F4572DADE89D105D /* SceneNodeType.swift */; };
+		E76D76C4F999A1B7803F0736 /* Geolocate3DApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF8E50819A360F2556350375 /* Geolocate3DApp.swift */; };
+		EA9CF739691893272E069A7E /* HiddenInferenceExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FFE8F22A799DE6A79100C9E /* HiddenInferenceExecutor.swift */; };
+		EAB2E6FF55A389A3A63060EF /* ScanRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657349BED78FDA91F51CEC43 /* ScanRoomView.swift */; };
+		EF320DA8E8286C3D0BC2F4D6 /* SpatialSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327B403C65F4EE557EBF5BF6 /* SpatialSessionManager.swift */; };
+		F2160EAB59569870DDF54312 /* AnnotationPin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17C3305A6AB9ECDE6BDB5D22 /* AnnotationPin.swift */; };
+		F65F2E4FBC3500954A092B12 /* FadeIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C798214E1D67E9E74660C025 /* FadeIn.swift */; };
+		FAB8E10D82557FE28627BF3B /* QueryHistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F8FF0594E6DCBFD41B892F /* QueryHistoryRow.swift */; };
+		FBEFC7F1F611E84D6624D960 /* ARViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8DC59AD80B079F8D55D1397 /* ARViewRepresentable.swift */; };
+		FC0A90FA439A46ABFD015D4E /* StatusChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB0DBB9C6C34FCE7AF73379 /* StatusChip.swift */; };
+		FEE9DE69FA65B44C1B227257 /* ObjectTooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03076E8B37A7EC9CDE532D56 /* ObjectTooltip.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		02FE527774FAF70AB43195E0 /* SceneViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneViewRepresentable.swift; sourceTree = "<group>"; };
+		03076E8B37A7EC9CDE532D56 /* ObjectTooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectTooltip.swift; sourceTree = "<group>"; };
+		0522D37B573E8385286FE6F5 /* ReconstructionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconstructionStatus.swift; sourceTree = "<group>"; };
+		08CA18F37732118E4E66627B /* LayerToggleBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayerToggleBar.swift; sourceTree = "<group>"; };
+		0C2C22233C1C69998F061873 /* GlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassCard.swift; sourceTree = "<group>"; };
+		0DD4BAB6D2156274992E0087 /* FrameRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRecord.swift; sourceTree = "<group>"; };
+		11F9114CC4E7DF362889FE56 /* ObjectTooltipOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectTooltipOverlay.swift; sourceTree = "<group>"; };
+		145DA70A2AAB27B34611B294 /* HypothesisCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HypothesisCard.swift; sourceTree = "<group>"; };
+		178B9E18AA995777031A6001 /* ObjectHypothesis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectHypothesis.swift; sourceTree = "<group>"; };
+		17C3305A6AB9ECDE6BDB5D22 /* AnnotationPin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationPin.swift; sourceTree = "<group>"; };
+		1EDB5E772EC361A6598E7D41 /* GlassBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassBackground.swift; sourceTree = "<group>"; };
+		1F29371FBC297FA1399DAEAA /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		20E35F9D7F19A9BBC3291DBF /* SearchResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResult.swift; sourceTree = "<group>"; };
+		253D3CCAD18139C609114B34 /* SceneEdge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneEdge.swift; sourceTree = "<group>"; };
+		2A23D0B5D2B870D4870AF2FC /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		2CAB5D13A436DD4B5088C0BB /* AppRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoutes.swift; sourceTree = "<group>"; };
+		2FFD8ABDF444A2FA156808B4 /* RoomPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPersistenceService.swift; sourceTree = "<group>"; };
+		325CA3E32E48E0D12A11A4CA /* SceneEdgeType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneEdgeType.swift; sourceTree = "<group>"; };
+		327B403C65F4EE557EBF5BF6 /* SpatialSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialSessionManager.swift; sourceTree = "<group>"; };
+		33D511D1E0AB25E2F7E14302 /* SearchClass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchClass.swift; sourceTree = "<group>"; };
+		3518C163E9711F80F6138F1A /* IntentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentParser.swift; sourceTree = "<group>"; };
+		3C531FA158A9A773718862A8 /* QueryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryViewModel.swift; sourceTree = "<group>"; };
+		4211E7A3D2FD83628E48F8DD /* StubViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubViews.swift; sourceTree = "<group>"; };
+		483A4F1012B5C065EDA07B57 /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
+		4CDE1C80706514BC6EF4A776 /* LocalObservationExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalObservationExecutor.swift; sourceTree = "<group>"; };
+		4D5CE0DCAFF2A6BDB34A1490 /* RoomPreviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPreviewCard.swift; sourceTree = "<group>"; };
+		58F8FF0594E6DCBFD41B892F /* QueryHistoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryHistoryRow.swift; sourceTree = "<group>"; };
+		59CAB0C66C84699686CE2E70 /* HiddenSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSearchView.swift; sourceTree = "<group>"; };
+		5CB0DBB9C6C34FCE7AF73379 /* StatusChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChip.swift; sourceTree = "<group>"; };
+		5EA71B9C6F304AA67DE1E6EB /* RoomCaptureViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureViewRepresentable.swift; sourceTree = "<group>"; };
+		5FFE8F22A799DE6A79100C9E /* HiddenInferenceExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenInferenceExecutor.swift; sourceTree = "<group>"; };
+		6002688F7D2A855A060B848F /* ConfidenceIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfidenceIndicator.swift; sourceTree = "<group>"; };
+		657349BED78FDA91F51CEC43 /* ScanRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanRoomView.swift; sourceTree = "<group>"; };
+		670AA22A4C1973D80848AE31 /* FloatingQueryBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingQueryBar.swift; sourceTree = "<group>"; };
+		69FCDB4C0261A1850AEC92DA /* SearchPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchPlanner.swift; sourceTree = "<group>"; };
+		6D4B2F14E02F13C929BD7EAD /* SpatialGlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialGlow.swift; sourceTree = "<group>"; };
+		70E9EA1264389600494FDB0A /* RoomRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomRecord.swift; sourceTree = "<group>"; };
+		71703B5B4C74BE9585752A37 /* ObservationSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservationSource.swift; sourceTree = "<group>"; };
+		72AFEBB77AC72023FB948669 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		72F66ACEA9027B9EFE287253 /* SpeechRecognitionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionService.swift; sourceTree = "<group>"; };
+		7EBE630BEEBFBF2CB87F178A /* ObjectObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectObservation.swift; sourceTree = "<group>"; };
+		80FE9042414B98ABDFFF55D9 /* SIMDExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SIMDExtensions.swift; sourceTree = "<group>"; };
+		832A0CA8C8245627729EBF2F /* HiddenSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenSearchViewModel.swift; sourceTree = "<group>"; };
+		843001B51580C7D3F7F33844 /* SpatialButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpatialButton.swift; sourceTree = "<group>"; };
+		8B6E914227C7792F26F0EFB9 /* RoomHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomHeatmapView.swift; sourceTree = "<group>"; };
+		8D984005E697EFEB81999F4A /* HypothesisType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HypothesisType.swift; sourceTree = "<group>"; };
+		9F58BC10E7AFB8365D535A65 /* ObjectPrototype.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectPrototype.swift; sourceTree = "<group>"; };
+		A16638469F873049E1092BE0 /* RoomTwinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomTwinView.swift; sourceTree = "<group>"; };
+		A7C5F3A574DF21DC8D964129 /* WorldMapStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorldMapStore.swift; sourceTree = "<group>"; };
+		A9401594AC869BC986402602 /* ScanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanViewModel.swift; sourceTree = "<group>"; };
+		A9481B3C0A42FCAA4F67593C /* ScanStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanStatusPill.swift; sourceTree = "<group>"; };
+		AF8E50819A360F2556350375 /* Geolocate3DApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geolocate3DApp.swift; sourceTree = "<group>"; };
+		B04234F3D7E212C8516C5B33 /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
+		B5E09E2B237A65308D2D0EDF /* QueryResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryResultView.swift; sourceTree = "<group>"; };
+		B8D6CD4C91EC339F3AB2D359 /* RelocalizationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelocalizationMonitor.swift; sourceTree = "<group>"; };
+		B9E3087DEF74E238B4F0BED7 /* FrameBundleManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameBundleManifest.swift; sourceTree = "<group>"; };
+		BA1AE8C4586A0AB85ADD448E /* Geolocate3D.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Geolocate3D.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C303E44071E7AEAAD3C4B2EE /* SceneNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneNode.swift; sourceTree = "<group>"; };
+		C35B18FFAAFFE10CA5EF3757 /* ARViewCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARViewCoordinator.swift; sourceTree = "<group>"; };
+		C75BC24364ECFC348C61471B /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		C798214E1D67E9E74660C025 /* FadeIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FadeIn.swift; sourceTree = "<group>"; };
+		CB5D5245A295923642691951 /* RoomStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomStore.swift; sourceTree = "<group>"; };
+		D02204C6764CF91FF43A2B18 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		D8DC59AD80B079F8D55D1397 /* ARViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARViewRepresentable.swift; sourceTree = "<group>"; };
+		DAC931E67F347645BD2CD61B /* QueryConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryConsoleView.swift; sourceTree = "<group>"; };
+		DEA278DB0CD2FD22CFCC38A0 /* VisibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisibilityState.swift; sourceTree = "<group>"; };
+		E9206F5440A6EB2BED2EEF5D /* ThermalMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalMonitor.swift; sourceTree = "<group>"; };
+		EB7F38DAF8F72D6881792A34 /* ScanCompletionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanCompletionSheet.swift; sourceTree = "<group>"; };
+		EE4242D32D6DAD54980BFC34 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
+		EE4EF740BDD92E4EEE167048 /* AnimatedWaveform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedWaveform.swift; sourceTree = "<group>"; };
+		EE8EE91712ACFA721312FBBD /* TrackingStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingStatusBadge.swift; sourceTree = "<group>"; };
+		F07E845A4C94CBFB2BE90A7F /* FrameBundleWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameBundleWriter.swift; sourceTree = "<group>"; };
+		F695E523F4572DADE89D105D /* SceneNodeType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneNodeType.swift; sourceTree = "<group>"; };
+		FA54AE6DE645ECEAC0ED6884 /* LiveSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSearchView.swift; sourceTree = "<group>"; };
+		FD9515AE69270670239B61B3 /* RoomTwinViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomTwinViewModel.swift; sourceTree = "<group>"; };
+		FEC9188200CD5A2C7F9E4D52 /* LiveSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSearchViewModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0D9B283D83FE72C5E4AC79D5 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				D02204C6764CF91FF43A2B18 /* HomeView.swift */,
+				EE4242D32D6DAD54980BFC34 /* HomeViewModel.swift */,
+				4D5CE0DCAFF2A6BDB34A1490 /* RoomPreviewCard.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		0FAC82D609083F2D4152F256 /* Scan */ = {
+			isa = PBXGroup;
+			children = (
+				5EA71B9C6F304AA67DE1E6EB /* RoomCaptureViewRepresentable.swift */,
+				EB7F38DAF8F72D6881792A34 /* ScanCompletionSheet.swift */,
+				657349BED78FDA91F51CEC43 /* ScanRoomView.swift */,
+				A9401594AC869BC986402602 /* ScanViewModel.swift */,
+			);
+			path = Scan;
+			sourceTree = "<group>";
+		};
+		217B92CF6FBC27C5473F3A1C /* App */ = {
+			isa = PBXGroup;
+			children = (
+				AF8E50819A360F2556350375 /* Geolocate3DApp.swift */,
+				72AFEBB77AC72023FB948669 /* RootTabView.swift */,
+				4211E7A3D2FD83628E48F8DD /* StubViews.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		219E3F133B20DCB45669B4D3 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				EE4EF740BDD92E4EEE167048 /* AnimatedWaveform.swift */,
+				6002688F7D2A855A060B848F /* ConfidenceIndicator.swift */,
+				1F29371FBC297FA1399DAEAA /* EmptyStateView.swift */,
+				670AA22A4C1973D80848AE31 /* FloatingQueryBar.swift */,
+				0C2C22233C1C69998F061873 /* GlassCard.swift */,
+				A9481B3C0A42FCAA4F67593C /* ScanStatusPill.swift */,
+				843001B51580C7D3F7F33844 /* SpatialButton.swift */,
+				6D4B2F14E02F13C929BD7EAD /* SpatialGlow.swift */,
+				5CB0DBB9C6C34FCE7AF73379 /* StatusChip.swift */,
+				EE8EE91712ACFA721312FBBD /* TrackingStatusBadge.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		3B489CDF7E76560199CA73AE /* AR */ = {
+			isa = PBXGroup;
+			children = (
+				B8D6CD4C91EC339F3AB2D359 /* RelocalizationMonitor.swift */,
+				327B403C65F4EE557EBF5BF6 /* SpatialSessionManager.swift */,
+				A7C5F3A574DF21DC8D964129 /* WorldMapStore.swift */,
+			);
+			path = AR;
+			sourceTree = "<group>";
+		};
+		3B65EEE92A1C9788DD878F65 /* Room */ = {
+			isa = PBXGroup;
+			children = (
+				0522D37B573E8385286FE6F5 /* ReconstructionStatus.swift */,
+				70E9EA1264389600494FDB0A /* RoomRecord.swift */,
+			);
+			path = Room;
+			sourceTree = "<group>";
+		};
+		3D3C7B4AB93185A0DA709052 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B04234F3D7E212C8516C5B33 /* AppCoordinator.swift */,
+				3B489CDF7E76560199CA73AE /* AR */,
+				4EF5894206F58F41A95E5882 /* Backend */,
+				535E5D96CAF0E28235267880 /* Persistence */,
+				83E870D740CD0D28195C198F /* Query */,
+				A2D85560EA07BED4ECEEADDA /* Room */,
+				C52144ADF1C901769999B45E /* Speech */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		4C6AD1BD80BBE3251740156B /* Navigation */ = {
+			isa = PBXGroup;
+			children = (
+				2CAB5D13A436DD4B5088C0BB /* AppRoutes.swift */,
+			);
+			path = Navigation;
+			sourceTree = "<group>";
+		};
+		4EF5894206F58F41A95E5882 /* Backend */ = {
+			isa = PBXGroup;
+			children = (
+				483A4F1012B5C065EDA07B57 /* BackendClient.swift */,
+			);
+			path = Backend;
+			sourceTree = "<group>";
+		};
+		535E5D96CAF0E28235267880 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				CB5D5245A295923642691951 /* RoomStore.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		574B5666F33BDB364ECFA9B1 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				80FE9042414B98ABDFFF55D9 /* SIMDExtensions.swift */,
+				E9206F5440A6EB2BED2EEF5D /* ThermalMonitor.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		5DF1AE8047B95713FFEB25C9 /* HiddenSearch */ = {
+			isa = PBXGroup;
+			children = (
+				59CAB0C66C84699686CE2E70 /* HiddenSearchView.swift */,
+				832A0CA8C8245627729EBF2F /* HiddenSearchViewModel.swift */,
+				145DA70A2AAB27B34611B294 /* HypothesisCard.swift */,
+				8B6E914227C7792F26F0EFB9 /* RoomHeatmapView.swift */,
+			);
+			path = HiddenSearch;
+			sourceTree = "<group>";
+		};
+		64E85AA07AC61DDADFA9A70F /* Query */ = {
+			isa = PBXGroup;
+			children = (
+				DAC931E67F347645BD2CD61B /* QueryConsoleView.swift */,
+				58F8FF0594E6DCBFD41B892F /* QueryHistoryRow.swift */,
+				B5E09E2B237A65308D2D0EDF /* QueryResultView.swift */,
+				3C531FA158A9A773718862A8 /* QueryViewModel.swift */,
+			);
+			path = Query;
+			sourceTree = "<group>";
+		};
+		6DC08FBA74864A02F0DBB465 = {
+			isa = PBXGroup;
+			children = (
+				F84496F6D77A7EBBF7760518 /* Geolocate3D */,
+				D346F7BDC156F0B167EDE270 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		83E870D740CD0D28195C198F /* Query */ = {
+			isa = PBXGroup;
+			children = (
+				3518C163E9711F80F6138F1A /* IntentParser.swift */,
+				69FCDB4C0261A1850AEC92DA /* SearchPlanner.swift */,
+				CE8B02B99DAF7E1F4F0FF535 /* Executors */,
+			);
+			path = Query;
+			sourceTree = "<group>";
+		};
+		898CAE47BE74C00DD23F16E1 /* SceneGraph */ = {
+			isa = PBXGroup;
+			children = (
+				253D3CCAD18139C609114B34 /* SceneEdge.swift */,
+				325CA3E32E48E0D12A11A4CA /* SceneEdgeType.swift */,
+				C303E44071E7AEAAD3C4B2EE /* SceneNode.swift */,
+				F695E523F4572DADE89D105D /* SceneNodeType.swift */,
+			);
+			path = SceneGraph;
+			sourceTree = "<group>";
+		};
+		996E3F1B569C5D93B7DD615D /* Query */ = {
+			isa = PBXGroup;
+			children = (
+				33D511D1E0AB25E2F7E14302 /* SearchClass.swift */,
+				20E35F9D7F19A9BBC3291DBF /* SearchResult.swift */,
+			);
+			path = Query;
+			sourceTree = "<group>";
+		};
+		A2D85560EA07BED4ECEEADDA /* Room */ = {
+			isa = PBXGroup;
+			children = (
+				F07E845A4C94CBFB2BE90A7F /* FrameBundleWriter.swift */,
+				2FFD8ABDF444A2FA156808B4 /* RoomPersistenceService.swift */,
+			);
+			path = Room;
+			sourceTree = "<group>";
+		};
+		ACECD26479952C5B1455BFF2 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				E6D133AF6B1C630584DB824D /* HiddenSearch */,
+				4C6AD1BD80BBE3251740156B /* Navigation */,
+				E9AFD6DFB6B33665CF540524 /* Observation */,
+				996E3F1B569C5D93B7DD615D /* Query */,
+				3B65EEE92A1C9788DD878F65 /* Room */,
+				898CAE47BE74C00DD23F16E1 /* SceneGraph */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		B1E37C6EC0C5A26C5F17FBBF /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				C35B18FFAAFFE10CA5EF3757 /* ARViewCoordinator.swift */,
+				D8DC59AD80B079F8D55D1397 /* ARViewRepresentable.swift */,
+				FA54AE6DE645ECEAC0ED6884 /* LiveSearchView.swift */,
+				FEC9188200CD5A2C7F9E4D52 /* LiveSearchViewModel.swift */,
+				03076E8B37A7EC9CDE532D56 /* ObjectTooltip.swift */,
+				11F9114CC4E7DF362889FE56 /* ObjectTooltipOverlay.swift */,
+			);
+			path = Search;
+			sourceTree = "<group>";
+		};
+		C52144ADF1C901769999B45E /* Speech */ = {
+			isa = PBXGroup;
+			children = (
+				72F66ACEA9027B9EFE287253 /* SpeechRecognitionService.swift */,
+			);
+			path = Speech;
+			sourceTree = "<group>";
+		};
+		C7F7A71C09B86B1DCEC09F9E /* Viewer */ = {
+			isa = PBXGroup;
+			children = (
+				17C3305A6AB9ECDE6BDB5D22 /* AnnotationPin.swift */,
+				08CA18F37732118E4E66627B /* LayerToggleBar.swift */,
+				A16638469F873049E1092BE0 /* RoomTwinView.swift */,
+				FD9515AE69270670239B61B3 /* RoomTwinViewModel.swift */,
+				02FE527774FAF70AB43195E0 /* SceneViewRepresentable.swift */,
+			);
+			path = Viewer;
+			sourceTree = "<group>";
+		};
+		CE8B02B99DAF7E1F4F0FF535 /* Executors */ = {
+			isa = PBXGroup;
+			children = (
+				5FFE8F22A799DE6A79100C9E /* HiddenInferenceExecutor.swift */,
+				4CDE1C80706514BC6EF4A776 /* LocalObservationExecutor.swift */,
+			);
+			path = Executors;
+			sourceTree = "<group>";
+		};
+		D346F7BDC156F0B167EDE270 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BA1AE8C4586A0AB85ADD448E /* Geolocate3D.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D60F95E63A924ECAA286C746 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				2A23D0B5D2B870D4870AF2FC /* Colors.swift */,
+				C75BC24364ECFC348C61471B /* Typography.swift */,
+				219E3F133B20DCB45669B4D3 /* Components */,
+				F9ECFE80383D16EB3F5137FC /* Modifiers */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		E6D133AF6B1C630584DB824D /* HiddenSearch */ = {
+			isa = PBXGroup;
+			children = (
+				8D984005E697EFEB81999F4A /* HypothesisType.swift */,
+				178B9E18AA995777031A6001 /* ObjectHypothesis.swift */,
+			);
+			path = HiddenSearch;
+			sourceTree = "<group>";
+		};
+		E9AFD6DFB6B33665CF540524 /* Observation */ = {
+			isa = PBXGroup;
+			children = (
+				B9E3087DEF74E238B4F0BED7 /* FrameBundleManifest.swift */,
+				0DD4BAB6D2156274992E0087 /* FrameRecord.swift */,
+				7EBE630BEEBFBF2CB87F178A /* ObjectObservation.swift */,
+				9F58BC10E7AFB8365D535A65 /* ObjectPrototype.swift */,
+				71703B5B4C74BE9585752A37 /* ObservationSource.swift */,
+				DEA278DB0CD2FD22CFCC38A0 /* VisibilityState.swift */,
+			);
+			path = Observation;
+			sourceTree = "<group>";
+		};
+		F84496F6D77A7EBBF7760518 /* Geolocate3D */ = {
+			isa = PBXGroup;
+			children = (
+				217B92CF6FBC27C5473F3A1C /* App */,
+				D60F95E63A924ECAA286C746 /* DesignSystem */,
+				FAD60488D8C0EAF079E37933 /* Features */,
+				ACECD26479952C5B1455BFF2 /* Models */,
+				3D3C7B4AB93185A0DA709052 /* Services */,
+				574B5666F33BDB364ECFA9B1 /* Utilities */,
+			);
+			name = Geolocate3D;
+			path = Sources/Geolocate3D;
+			sourceTree = "<group>";
+		};
+		F9ECFE80383D16EB3F5137FC /* Modifiers */ = {
+			isa = PBXGroup;
+			children = (
+				C798214E1D67E9E74660C025 /* FadeIn.swift */,
+				1EDB5E772EC361A6598E7D41 /* GlassBackground.swift */,
+			);
+			path = Modifiers;
+			sourceTree = "<group>";
+		};
+		FAD60488D8C0EAF079E37933 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				5DF1AE8047B95713FFEB25C9 /* HiddenSearch */,
+				0D9B283D83FE72C5E4AC79D5 /* Home */,
+				64E85AA07AC61DDADFA9A70F /* Query */,
+				0FAC82D609083F2D4152F256 /* Scan */,
+				B1E37C6EC0C5A26C5F17FBBF /* Search */,
+				C7F7A71C09B86B1DCEC09F9E /* Viewer */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A521D64084F7018196F02F7B /* Geolocate3D */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AF6A88BA25BBDEBF9CD5D83B /* Build configuration list for PBXNativeTarget "Geolocate3D" */;
+			buildPhases = (
+				1EA71AC727A55ED197A34CF8 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Geolocate3D;
+			packageProductDependencies = (
+			);
+			productName = Geolocate3D;
+			productReference = BA1AE8C4586A0AB85ADD448E /* Geolocate3D.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		26F58959F1C680A39027F78E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A521D64084F7018196F02F7B = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F23457DECDAA6B691478A7C3 /* Build configuration list for PBXProject "Geolocate3D" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 6DC08FBA74864A02F0DBB465;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D346F7BDC156F0B167EDE270 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A521D64084F7018196F02F7B /* Geolocate3D */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1EA71AC727A55ED197A34CF8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B39466123CE9F4D60CA9393 /* ARViewCoordinator.swift in Sources */,
+				FBEFC7F1F611E84D6624D960 /* ARViewRepresentable.swift in Sources */,
+				2A6ADAE1D5942233FB12F5EE /* AnimatedWaveform.swift in Sources */,
+				F2160EAB59569870DDF54312 /* AnnotationPin.swift in Sources */,
+				662F6E5F277CBFAAD998E2BD /* AppCoordinator.swift in Sources */,
+				66DA9E3191C22F6E251E4021 /* AppRoutes.swift in Sources */,
+				3031F61154F9CC361FF255D7 /* BackendClient.swift in Sources */,
+				A4120E10E4EFF8DB88CE0C2A /* Colors.swift in Sources */,
+				8577EF7582D68FE2D832CA08 /* ConfidenceIndicator.swift in Sources */,
+				D6869786D5D402F5E7E5436D /* EmptyStateView.swift in Sources */,
+				F65F2E4FBC3500954A092B12 /* FadeIn.swift in Sources */,
+				376ECB603755B6AF5C44C620 /* FloatingQueryBar.swift in Sources */,
+				A96F5410F1B21E6B0DDC4E61 /* FrameBundleManifest.swift in Sources */,
+				C7C1CBAA74E85AFA5822C422 /* FrameBundleWriter.swift in Sources */,
+				3F46387BBBC07B69ABA54BFD /* FrameRecord.swift in Sources */,
+				E76D76C4F999A1B7803F0736 /* Geolocate3DApp.swift in Sources */,
+				DFF7B6341807B9168D3C0229 /* GlassBackground.swift in Sources */,
+				D6D334C26ADFA04401007CF0 /* GlassCard.swift in Sources */,
+				EA9CF739691893272E069A7E /* HiddenInferenceExecutor.swift in Sources */,
+				B1BC2B39E5CB43B71E1B26CF /* HiddenSearchView.swift in Sources */,
+				3E7E6A2560E57080E054DA5A /* HiddenSearchViewModel.swift in Sources */,
+				6761DF59CF9AD9761A7EACC5 /* HomeView.swift in Sources */,
+				9913C8AF3DA403AFE8837AEB /* HomeViewModel.swift in Sources */,
+				2E788F56CE366D48A0E6A001 /* HypothesisCard.swift in Sources */,
+				0790785B39BABC60D87C1594 /* HypothesisType.swift in Sources */,
+				4CC361A8E88A2F3686015F58 /* IntentParser.swift in Sources */,
+				49F76154974A5C5E9BAC3128 /* LayerToggleBar.swift in Sources */,
+				957276BF93E2FF1749D25712 /* LiveSearchView.swift in Sources */,
+				684DA352254F70CA01341E5B /* LiveSearchViewModel.swift in Sources */,
+				A79FAFC404E20670241F5C68 /* LocalObservationExecutor.swift in Sources */,
+				8DD9A9DDE8DD815C120CF8E0 /* ObjectHypothesis.swift in Sources */,
+				BD19DC4D9F155DC7B515F1BA /* ObjectObservation.swift in Sources */,
+				5A8FDC979EB564F07EAAA9B2 /* ObjectPrototype.swift in Sources */,
+				FEE9DE69FA65B44C1B227257 /* ObjectTooltip.swift in Sources */,
+				D85037750E47142E55BB7351 /* ObjectTooltipOverlay.swift in Sources */,
+				E22BAAEFA614C59E95DC94D2 /* ObservationSource.swift in Sources */,
+				D50B4261BD98871AB5E85B79 /* QueryConsoleView.swift in Sources */,
+				FAB8E10D82557FE28627BF3B /* QueryHistoryRow.swift in Sources */,
+				188B21B92B381E4CA756E6B7 /* QueryResultView.swift in Sources */,
+				A10FE5E442EA97DA90D22720 /* QueryViewModel.swift in Sources */,
+				19CF4719CA518357CE8DEC4B /* ReconstructionStatus.swift in Sources */,
+				3CDD103789B0849B2C96DB69 /* RelocalizationMonitor.swift in Sources */,
+				679EFBFAFF419091269A5BED /* RoomCaptureViewRepresentable.swift in Sources */,
+				A269337B47A616141FDD88EF /* RoomHeatmapView.swift in Sources */,
+				44D6EF43F931DCCA1DD56960 /* RoomPersistenceService.swift in Sources */,
+				0077B61E77BDBE7CDDAFF7A2 /* RoomPreviewCard.swift in Sources */,
+				1BCE7133D881B44BA8E248F1 /* RoomRecord.swift in Sources */,
+				98B2F511E389041CC0A24DF2 /* RoomStore.swift in Sources */,
+				B1950AA15257740EECDE8490 /* RoomTwinView.swift in Sources */,
+				7E337536AD2712B622A6E615 /* RoomTwinViewModel.swift in Sources */,
+				254E639D62B8A62380806560 /* RootTabView.swift in Sources */,
+				CCFC10E1F41DE3B27CB9E3B4 /* SIMDExtensions.swift in Sources */,
+				B09B6F528A08B9D6B07D35D7 /* ScanCompletionSheet.swift in Sources */,
+				EAB2E6FF55A389A3A63060EF /* ScanRoomView.swift in Sources */,
+				970A7530FD274AF58B0142A9 /* ScanStatusPill.swift in Sources */,
+				C8A46CDDE8FAD57E38EE816B /* ScanViewModel.swift in Sources */,
+				2BD79C50DFF1EDF1877F42D1 /* SceneEdge.swift in Sources */,
+				73FE5C86E28DC38C936A7EF3 /* SceneEdgeType.swift in Sources */,
+				41740ABD235A64A757378AD6 /* SceneNode.swift in Sources */,
+				E42B9D519C643DACCFE55AFE /* SceneNodeType.swift in Sources */,
+				E3CB0323611429142F9DA6E4 /* SceneViewRepresentable.swift in Sources */,
+				83719DF1F8047D573EF03745 /* SearchClass.swift in Sources */,
+				221AA2F863EA2BF778E05716 /* SearchPlanner.swift in Sources */,
+				6699390F00134816E4111230 /* SearchResult.swift in Sources */,
+				07563EDA288F73BD41BC671A /* SpatialButton.swift in Sources */,
+				CD496A1EAE591A13576D8C0F /* SpatialGlow.swift in Sources */,
+				EF320DA8E8286C3D0BC2F4D6 /* SpatialSessionManager.swift in Sources */,
+				429987121886BD64240817A1 /* SpeechRecognitionService.swift in Sources */,
+				FC0A90FA439A46ABFD015D4E /* StatusChip.swift in Sources */,
+				79E3305B78FA50202327ECAD /* StubViews.swift in Sources */,
+				5C22010765D272A6082034A3 /* ThermalMonitor.swift in Sources */,
+				23ABEC5204C87FB5299E7446 /* TrackingStatusBadge.swift in Sources */,
+				2C5F30CDD651E3CCC5407D01 /* Typography.swift in Sources */,
+				B524F95809607D2635B1F6B1 /* VisibilityState.swift in Sources */,
+				38BFFA11988A834E7373EFDE /* WorldMapStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1696AC29AD18D8939838D75A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Geolocate3D needs camera access for AR room scanning and object detection.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hacktj2026.Geolocate3D;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3553101418E5606ED5332F67 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B4678FC558F320377A83158E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		FB7899F1735238C40CEDD681 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Geolocate3D needs camera access for AR room scanning and object detection.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.hacktj2026.Geolocate3D;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AF6A88BA25BBDEBF9CD5D83B /* Build configuration list for PBXNativeTarget "Geolocate3D" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FB7899F1735238C40CEDD681 /* Debug */,
+				1696AC29AD18D8939838D75A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F23457DECDAA6B691478A7C3 /* Build configuration list for PBXProject "Geolocate3D" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3553101418E5606ED5332F67 /* Debug */,
+				B4678FC558F320377A83158E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 26F58959F1C680A39027F78E /* Project object */;
+}
