@@ -6,6 +6,8 @@ from uuid import uuid4
 from fastapi import FastAPI
 from pydantic import Field
 
+from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
+from hacktj2026_ml.chat_service import ChatService
 from hacktj2026_ml.query_contracts import (
     APIDTOModel,
     OpenVocabSearchRequest,
@@ -73,6 +75,7 @@ class RoomAssetsResponseDTO(APIDTOModel):
 
 app = FastAPI(title="hacktj2026-ml", version="0.2.0")
 engine = QueryEngine(toolkit=DefaultQueryToolkit())
+chat_service = ChatService(query_engine=engine)
 
 @app.get("/healthz")
 def healthcheck() -> dict[str, str]:
@@ -110,6 +113,11 @@ def parse_query(request: PlannerRequest) -> PlannerPlan:
 def query_room(room_id: str, request: QueryRequest) -> QueryResponseDTO:
     planner_request = build_planner_request(room_id=room_id, request=request)
     return engine.execute_query(planner_request=planner_request, query_request=request)
+
+@app.post("/rooms/{room_id}/chat", response_model=ChatResponseDTO)
+def chat_room(room_id: str, request: ChatRequestDTO) -> ChatResponseDTO:
+    adjusted_request = request.model_copy(update={"room_id": room_id})
+    return chat_service.chat(adjusted_request)
 
 @app.post("/rooms/{room_id}/open-vocab-search", response_model=OpenVocabSearchResponseDTO)
 def open_vocab_search(room_id: str, request: OpenVocabSearchRequest) -> OpenVocabSearchResponseDTO:

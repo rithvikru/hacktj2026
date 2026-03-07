@@ -36,6 +36,17 @@ uv run --group serving python serving/tools/export_contract_schemas.py
 uv run uvicorn serving.api.app:app --app-dir . --reload
 ```
 
+Chat layer:
+
+```bash
+# optional: enable OpenAI-backed chat replies
+set OPENAI_API_KEY=your_key_here
+set OPENAI_MODEL=gpt-4.1-mini
+
+# backend chat endpoint
+POST /rooms/{room_id}/chat
+```
+
 Dataset bootstrap notes:
 
 - `datasets/tools/download_open_images_bootstrap.py` downloads official Open Images metadata, filters the target classes, and can fetch the matching subset images into `datasets/external/public/open-images-v7/`

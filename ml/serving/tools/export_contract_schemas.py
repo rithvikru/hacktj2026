@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
 from hacktj2026_ml.query_contracts import (
     OpenVocabSearchRequest,
     OpenVocabSearchResponseDTO,
@@ -24,6 +25,8 @@ def main() -> None:
         "planner-plan.schema.json": PlannerPlan,
         "query-request.schema.json": QueryRequest,
         "query-response.schema.json": QueryResponseDTO,
+        "chat-request.schema.json": ChatRequestDTO,
+        "chat-response.schema.json": ChatResponseDTO,
         "open-vocab-search-request.schema.json": OpenVocabSearchRequest,
         "open-vocab-search-response.schema.json": OpenVocabSearchResponseDTO,
         "search-result.schema.json": SearchResultDTO,
