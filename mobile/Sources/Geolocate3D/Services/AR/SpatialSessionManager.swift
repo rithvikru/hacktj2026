@@ -1,4 +1,4 @@
-import ARKit
+@preconcurrency import ARKit
 import Combine
 
 /// Singleton AR session manager.
@@ -62,12 +62,12 @@ final class SpatialSessionManager: NSObject, ARSessionDelegate {
 
     func getCurrentWorldMap() async throws -> ARWorldMap {
         guard let session else {
-            throw ARError(.sessionFailed)
+            throw ARError(.worldTrackingFailed)
         }
         return try await withCheckedThrowingContinuation { continuation in
             session.getCurrentWorldMap { map, error in
                 if let map { continuation.resume(returning: map) }
-                else { continuation.resume(throwing: error ?? ARError(.sessionFailed)) }
+                else { continuation.resume(throwing: error ?? ARError(.worldTrackingFailed)) }
             }
         }
     }

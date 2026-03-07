@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import RealityKit
 import ARKit
 import simd
@@ -42,7 +43,7 @@ final class LiveSearchViewModel {
     private let searchPlanner = SearchPlanner()
 
     // Entity tracking — maps observation ID to the RealityKit anchor entity
-    private var entityMap: [UUID: AnchorEntity] = []
+    @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
 
     /// Sync 3D pin entities into the ARView scene for each active observation.
     func syncOverlays(in arView: ARView?) {

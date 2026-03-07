@@ -1,4 +1,4 @@
-import ARKit
+@preconcurrency import ARKit
 import Foundation
 
 /// Handles saving and loading ARWorldMap data via NSKeyedArchiver/Unarchiver.

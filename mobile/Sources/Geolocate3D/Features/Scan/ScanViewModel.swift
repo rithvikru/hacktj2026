@@ -10,10 +10,13 @@ import UIKit
 /// Uses USDZ export only + RoomPersistenceService for asset storage.
 @Observable
 @MainActor
-final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate, NSCoding {
     var scanState: ScanState = .initializing
     var detectedObjectCount: Int = 0
     var savedRoomID: UUID?
+
+    nonisolated required init?(coder: NSCoder) { nil }
+    nonisolated func encode(with coder: NSCoder) {}
 
     private let persistence = RoomPersistenceService()
     private let frameBundleWriter = FrameBundleWriter()

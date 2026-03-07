@@ -1,7 +1,7 @@
 # AI/ML Model Specification
 
 Status: source of truth for AI/ML implementation  
-Version: `v1.0`  
+Version: `v1.1`  
 Last updated: `2026-03-07`  
 Owner: `AI/ML lead`
 
@@ -29,13 +29,14 @@ This document is prescriptive. Follow it unless a later revision changes it.
 
 The AI/ML workstream owns these problem areas:
 
-1. closed-set visible object detection for on-device search
+1. natural-language query planning and normalization
 2. open-vocabulary visible object search on the backend
 3. mask refinement and object region extraction
 4. multimodal retrieval embeddings
 5. delayed 3D reconstruction and dense room assets
-6. hidden-object likelihood inference
-7. dataset curation and evaluation suites
+6. optional on-device acceleration models
+7. hidden-object likelihood inference
+8. dataset curation and evaluation suites
 
 The AI/ML workstream does not own:
 
@@ -65,26 +66,39 @@ These constraints are fixed:
 
 The AI/ML workstream must produce these artifacts:
 
-1. on-device closed-set Core ML model package
+1. natural-language planner contract and orchestration logic
 2. backend open-vocabulary detector service
 3. backend segmentation service
 4. embedding extraction service and vector index
 5. delayed reconstruction pipeline
 6. hidden-object ranking engine
-7. dataset schemas and labeling guide
-8. benchmark suite and evaluation reports
-9. model manifests for app/backend integration
+7. optional on-device closed-set Core ML model package
+8. dataset schemas and labeling guide
+9. benchmark suite and evaluation reports
+10. model manifests for app/backend integration
 
 ## 5. Locked Model Portfolio
 
 These are the default model choices.
 
+The system is natural-language-first.
+
+Natural-language understanding and planner selection happen before any detector call. Use a GPT-class multimodal reasoning model or equivalent frontier LLM for:
+
+1. target phrase extraction
+2. attribute and relation parsing
+3. ambiguity handling
+4. search-path selection
+5. explanation generation from downstream evidence
+
+This planner layer is required. It is not the detection or localization engine.
+
 ### 5.1 `M1` On-Device Closed-Set Detector
 
 Purpose:
 
-1. real-time detection of a small set of known personal objects
-2. local-only search when the backend is unavailable
+1. optional low-latency accelerator for a small set of high-frequency objects
+2. degraded offline path when the backend is unavailable
 
 Primary implementation:
 
@@ -106,26 +120,18 @@ Requirements:
 4. emits boxes, labels, and confidence
 5. integrates cleanly with `Vision`
 
-Default closed-set labels:
-
-1. `airpods_case`
-2. `wallet`
-3. `keys`
-4. `tv_remote`
-5. `glasses`
-6. `phone`
-7. `charger`
-
 Rule:
 
-Do not expand the closed-set label set until the first seven labels meet the acceptance gate.
+1. `M1` is optional and must not define the product vocabulary
+2. if implemented, keep the local label pack intentionally small and justified by benchmark data
+3. product search capability comes from natural-language planning plus the `M2-M4` stack, not from `M1`
 
 ### 5.2 `M2` Backend Open-Vocabulary Detector
 
 Purpose:
 
 1. arbitrary phrase-based object search
-2. long-tail object retrieval beyond the closed-set model
+2. primary visible-object search path for the product
 
 Primary implementation:
 
@@ -249,63 +255,54 @@ This engine must output ranked hypotheses with explanation codes. It must never 
 
 Locked:
 
-1. model roles `M1-M7`
-2. output contracts
-3. evidence classes
-4. evaluation metrics
-5. backend self-hosting requirement for core models
+1. natural-language-first query surface
+2. model roles `M1-M7`
+3. `M2-M4` as the primary visible-search stack
+4. output contracts
+5. evidence classes
+6. evaluation metrics
+7. backend self-hosting requirement for core models
 
 Flexible:
 
-1. exact `M1` detector architecture
-2. exact feature engineering for `M7`
-3. exact vector database choice
-4. exact orchestration framework for backend workers
+1. exact planner model family
+2. whether `M1` ships in the first production-ready build
+3. exact `M1` detector architecture
+4. exact feature engineering for `M7`
+5. exact vector database choice
+6. exact orchestration framework for backend workers
 
 If you swap a model family, the replacement must preserve the same input/output contract and beat the current acceptance gate.
 
 ## 7. ML Problem Map
 
-### 7.1 Real-Time On-Device
+### 7.1 Natural-Language Search
 
-Owned models:
+Owned components:
 
-1. `M1`
-
-Inputs:
-
-1. RGB frame
-2. optional depth-aligned metadata from app
-
-Outputs:
-
-1. object boxes
-2. label IDs
-3. confidence scores
-
-### 7.2 Delayed Search
-
-Owned models:
-
-1. `M2`
-2. `M3`
-3. `M4`
+1. planner layer
+2. `M2`
+3. `M3`
+4. `M4`
+5. optional `M1`
 
 Inputs:
 
-1. saved room frames
-2. text query
+1. query text or voice transcript
+2. live frame selection or saved room frames
 3. camera poses
 4. optional depth maps
+5. room context and prior observations
 
 Outputs:
 
 1. grounded candidates
 2. masks
-3. embeddings
-4. ranked detections in room coordinates
+3. embeddings and ranked retrieval results
+4. detections in room coordinates
+5. planner-selected response type and explanation
 
-### 7.3 Reconstruction
+### 7.2 Reconstruction
 
 Owned models:
 
@@ -325,7 +322,7 @@ Outputs:
 2. room-aligned point or mesh representation
 3. Gaussian scene if generated
 
-### 7.4 Hidden Inference
+### 7.3 Hidden Inference
 
 Owned models:
 
@@ -419,7 +416,8 @@ Example:
 
 Query mapping rule:
 
-1. user query `Where are my AirPods?` maps to visual label `airpods_case` unless a tagged or cooperative signal path is explicitly configured
+1. user query `Where are my AirPods?` maps to a canonical noun phrase such as `airpods case`
+2. this canonical phrase is planner output for retrieval and grounding, not a requirement that the product be limited to a fixed closed-set label list
 
 ### 9.3 Visibility States
 
@@ -489,16 +487,17 @@ Each hidden-target training example must include:
 
 ## 10. Dataset Collection Rules
 
-### 10.1 Closed-Set Dataset
+### 10.1 Optional Local-Acceleration Dataset
 
 Collect:
 
-1. at least `500` images per canonical label before claiming model stability
-2. at least `20` physical instances per label where possible
-3. at least `10` rooms across different clutter levels
-4. multiple lighting conditions
-5. multiple floor and bedding textures
-6. partial occlusions and clutter
+1. only if `M1` is shipped
+2. at least `500` images per canonical local label before claiming model stability
+3. at least `20` physical instances per label where possible
+4. at least `10` rooms across different clutter levels
+5. multiple lighting conditions
+6. multiple floor and bedding textures
+7. partial occlusions and clutter
 
 ### 10.2 Delayed Search Dataset
 
@@ -544,6 +543,11 @@ This is mandatory to avoid leakage.
 
 ### 11.1 `M1` On-Device Closed-Set Detector
 
+Role:
+
+1. optional acceleration and degraded offline fallback
+2. not the primary natural-language search path
+
 Input contract:
 
 1. RGB image
@@ -559,14 +563,15 @@ Output contract:
 
 Training rules:
 
-1. start with `Create ML` object detection baseline
-2. train a stronger custom model if the baseline misses the gate
-3. include hard negatives:
+1. only implement if the backend natural-language path is already defined and benchmarked
+2. start with `Create ML` object detection baseline
+3. train a stronger custom model if the baseline misses the gate
+4. include hard negatives:
    - earbuds without case
    - wallets embedded in fabric patterns
    - metallic remote-like objects
    - chargers and cables near phones
-4. augment for:
+5. augment for:
    - motion blur
    - low light
    - partial occlusion
@@ -582,9 +587,10 @@ Export rules:
 
 Acceptance gate:
 
-1. mAP@50 on held-out room split `>= 0.75`
-2. per-class recall@1 on held-out room split `>= 0.80`
-3. runs on iPhone 15 Pro Max at `>= 2 fps` end-to-end with app integration
+1. applies only if `M1` is shipped
+2. mAP@50 on held-out room split `>= 0.75`
+3. per-class recall@1 on held-out room split `>= 0.80`
+4. runs on iPhone 15 Pro Max at `>= 2 fps` end-to-end with app integration
 
 ### 11.2 `M2` Open-Vocabulary Detector
 
@@ -601,11 +607,14 @@ Output contract:
 
 Prompt rules:
 
-1. normalize app query into concise noun phrase
-2. prefer canonical prompts such as:
-   - `airpods case`
-   - `brown wallet`
-   - `tv remote`
+1. preserve the user’s natural-language phrase whenever it contains meaningful attributes or relations
+2. normalize only enough to improve grounding
+3. keep both:
+   - original user query
+   - planner-produced canonical noun phrase
+4. examples:
+   - user query: `where is my black wallet near the bed`
+   - canonical phrase: `black wallet`
 
 Serving rules:
 
@@ -925,7 +934,7 @@ Every shipped model artifact must include a manifest file with:
 
 Rules:
 
-1. ship `M1` as a versioned `Core ML` artifact
+1. if `M1` is shipped, ship it as a versioned `Core ML` artifact
 2. run through `Vision` where practical
 3. keep post-processing deterministic and versioned
 4. preserve threshold config outside model weights when possible
@@ -934,7 +943,7 @@ Rules:
 
 Rules:
 
-1. serve `M2-M7` behind versioned endpoints
+1. serve planner, `M2`, `M3`, `M4`, `M5`, and `M7` behind versioned endpoints
 2. make inference idempotent on saved frame bundles
 3. log model version and latency for every request
 
@@ -951,36 +960,39 @@ Rules:
 Follow this order:
 
 1. dataset schema and label ontology
-2. visible detection benchmark set
-3. `M1` Create ML baseline
-4. `M1` stronger Core ML candidate
-5. `M2 + M3` backend grounding and masking
-6. `M4` embedding index and retrieval eval
+2. planner contract and natural-language query normalization
+3. frame-bundle ingestion and visible-search benchmark set
+4. `M2 + M3` backend grounding and masking
+5. `M4` embedding index and retrieval eval
+6. `M7` rule-based hidden ranker
 7. `M5` DA3 reconstruction pipeline
 8. `M6` dense viewer asset generation
-9. `M7` rule-based hidden ranker
+9. optional `M1` local accelerator
 10. `M7` learned ranker if benchmark data justifies it
 
 ## 18. Explicit Decisions
 
 These decisions are locked:
 
-1. `M1` is on-device and closed-set
-2. `M2` is self-hosted and open-vocabulary
-3. `M3` is segmentation for mask refinement
-4. `M4` owns the canonical retrieval embedding space
-5. `M5` is the primary delayed reconstruction model
-6. `M7` returns ranked hypotheses, not direct detections
-7. every result is versioned and attributable to a model artifact
+1. the product query surface is natural language, not a fixed label list
+2. planner plus `M2-M4` is the primary visible-search path
+3. `M1` is optional and on-device if shipped
+4. `M2` is self-hosted and open-vocabulary
+5. `M3` is segmentation for mask refinement
+6. `M4` owns the canonical retrieval embedding space
+7. `M5` is the primary delayed reconstruction model
+8. `M7` returns ranked hypotheses, not direct detections
+9. every result is versioned and attributable to a model artifact
 
 ## 19. Explicit Non-Goals
 
 Do not spend time on:
 
 1. AirPods private API work
-2. fake thermal-model research
-3. trying to prove direct non-cooperative through-occluder sensing on stock iPhone hardware
-4. training everything from scratch before baselines exist
+2. treating `M1` labels as the product vocabulary
+3. fake thermal-model research
+4. trying to prove direct non-cooperative through-occluder sensing on stock iPhone hardware
+5. training everything from scratch before baselines exist
 
 ## 20. References
 
