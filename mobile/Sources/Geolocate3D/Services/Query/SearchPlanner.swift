@@ -131,7 +131,12 @@ struct SearchPlanner {
                 confidence: 0,
                 explanation: "Scene-graph search is only available for spatial-relation queries.",
                 evidence: [],
-                timestamp: Date()
+                timestamp: Date(),
+                confidenceState: .notFound,
+                roomName: nil,
+                recencySeconds: nil,
+                memoryFreshness: nil,
+                routeHint: nil
             )
             return SearchExecutionResult(result: result, localObservations: [], backendResults: [])
         }
@@ -212,7 +217,12 @@ struct SearchPlanner {
                 confidence: 0,
                 explanation: "Backend search failed: \(error.localizedDescription)",
                 evidence: ["backend-search"],
-                timestamp: Date()
+                timestamp: Date(),
+                confidenceState: .notFound,
+                roomName: nil,
+                recencySeconds: nil,
+                memoryFreshness: nil,
+                routeHint: nil
             )
             return SearchExecutionResult(result: errorResult, localObservations: [], backendResults: [])
         }
@@ -225,12 +235,7 @@ struct SearchPlanner {
         explanation: String
     ) -> SearchResult {
         let top = results[0]
-        let resultType: DetectionConfidenceClass
-        if top.worldTransform != nil {
-            resultType = top.confidence >= 0.8 ? .confirmedHigh : .confirmedMedium
-        } else {
-            resultType = .confirmedMedium
-        }
+        let resultType = detectionClass(for: top)
         return SearchResult(
             id: top.id,
             query: query,
@@ -239,7 +244,29 @@ struct SearchPlanner {
             confidence: top.confidence,
             explanation: explanation.isEmpty ? top.explanation : explanation,
             evidence: top.evidence.isEmpty ? ["backend-search"] : top.evidence,
-            timestamp: Date()
+            timestamp: Date(),
+            confidenceState: top.confidenceState,
+            roomName: top.roomName,
+            recencySeconds: top.recencySeconds,
+            memoryFreshness: top.memoryFreshness,
+            routeHint: top.routeHint
         )
+    }
+
+    private func detectionClass(for result: BackendSearchResult) -> DetectionConfidenceClass {
+        switch result.resultType {
+        case "detected":
+            return result.confidence >= 0.8 ? .confirmedHigh : .confirmedMedium
+        case "last_seen":
+            return .lastSeen
+        case "stale_memory":
+            return .staleMemory
+        case "likely_hidden":
+            return .likelihoodRanked
+        case "signal_estimated":
+            return .signalEstimated
+        default:
+            return .noResult
+        }
     }
 }

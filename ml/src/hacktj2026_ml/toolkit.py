@@ -72,6 +72,7 @@ class DefaultQueryToolkit:
                 label=plan.canonical_query_label,
                 result_type="last_seen",
                 confidence=0.41,
+                confidence_state="last_seen",
                 world_transform16=None,
                 bbox_xyxy_norm=None,
                 frame_id=None,
@@ -156,10 +157,19 @@ def observation_matches(query_label: str, observation: ObservationSummary) -> bo
     return bool(query_tokens <= label_tokens or label_tokens <= query_tokens or query_tokens & label_tokens)
 
 def observation_to_result(observation: ObservationSummary) -> SearchResultDTO:
-    result_type = observation.evidence_class or "last_seen"
+    age_seconds = _observation_age_seconds(observation.observed_at)
+    if observation.evidence_class == "detected":
+        result_type = "detected"
+        confidence_state = "live_seen"
+    elif age_seconds is not None and age_seconds > 86400:
+        result_type = "stale_memory"
+        confidence_state = "stale_memory"
+    else:
+        result_type = observation.evidence_class or "last_seen"
+        confidence_state = "last_seen" if result_type == "last_seen" else "live_seen"
     explanation = (
         f"Matched local room memory for '{observation.label}'."
-        if result_type == "last_seen"
+        if result_type in {"last_seen", "stale_memory"}
         else f"Matched recent visible observation for '{observation.label}'."
     )
     return SearchResultDTO(
@@ -167,10 +177,16 @@ def observation_to_result(observation: ObservationSummary) -> SearchResultDTO:
         label=observation.label,
         result_type=result_type,
         confidence=observation.confidence,
+        confidence_state=confidence_state,
         world_transform16=observation.world_transform16,
         bbox_xyxy_norm=None,
         frame_id=None,
         mask_ref=None,
+        room_id=observation.room_id,
+        room_name=observation.room_name,
+        recency_seconds=age_seconds,
+        memory_freshness=_memory_freshness(age_seconds),
+        route_hint=f"Head to {observation.room_name}." if observation.room_name else None,
         model_id=observation.source or "memory.local_observation",
         model_version="1.0.0",
         evidence=["localObservation", observation.source or "memory"],
@@ -183,6 +199,21 @@ def sort_observation(observation: ObservationSummary) -> tuple[float, str]:
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+def _observation_age_seconds(observed_at: str | None) -> float | None:
+    if not observed_at:
+        return None
+    try:
+        parsed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max((datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds(), 0.0)
+
+def _memory_freshness(age_seconds: float | None) -> float | None:
+    if age_seconds is None:
+        return None
+    freshness = 1.0 - (age_seconds / 604800.0)
+    return max(0.0, min(freshness, 1.0))
 
 def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabCandidateDTO]:
     try:

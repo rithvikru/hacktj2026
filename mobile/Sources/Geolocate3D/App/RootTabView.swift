@@ -37,11 +37,11 @@ struct RootTabView: View {
                     .presentationCornerRadius(32)
                     .presentationBackground(.ultraThinMaterial)
             case .scanResults(let roomID):
-                ScanResultsStubView(roomID: roomID)
+                ScanResultsView(roomID: roomID)
                     .presentationDetents([.height(400)])
                     .presentationCornerRadius(32)
             case .objectDetail(let id):
-                ObjectDetailStubView(observationID: id)
+                ObjectDetailView(observationID: id)
                     .presentationDetents([.medium])
             }
         }
@@ -63,7 +63,7 @@ struct HomeStack: View {
                     case .hiddenSearch(let id):
                         HiddenSearchView(roomID: id)
                     case .objectDetail(let id):
-                        ObjectDetailStubView(observationID: id)
+                        ObjectDetailView(observationID: id)
                     }
                 }
         }

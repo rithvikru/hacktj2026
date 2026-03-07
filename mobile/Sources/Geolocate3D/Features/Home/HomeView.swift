@@ -10,30 +10,38 @@ struct HomeView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
-                if rooms.isEmpty {
-                    EmptyStateView()
-                } else {
-                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 20) {
-                        ForEach(rooms) { room in
-                            RoomPreviewCard(room: room)
-                                .onTapGesture {
-                                    coordinator.push(.roomTwin(roomID: room.id))
-                                }
-                                .contextMenu {
-                                    Button("Live Search", systemImage: "arkit") {
-                                        coordinator.presentImmersive(.liveSearch(roomID: room.id))
+                VStack(spacing: 20) {
+                    heroSection
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+
+                    HomeMapOverviewCard(rooms: Array(rooms))
+                        .padding(.horizontal, 20)
+
+                    if rooms.isEmpty {
+                        EmptyStateView()
+                    } else {
+                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 20) {
+                            ForEach(rooms) { room in
+                                RoomPreviewCard(room: room)
+                                    .onTapGesture {
+                                        coordinator.push(.roomTwin(roomID: room.id))
                                     }
-                                    Button("Query", systemImage: "text.magnifyingglass") {
-                                        coordinator.presentSheet(.queryConsole(roomID: room.id))
+                                    .contextMenu {
+                                        Button("Live Search", systemImage: "arkit") {
+                                            coordinator.presentImmersive(.liveSearch(roomID: room.id))
+                                        }
+                                        Button("Query", systemImage: "text.magnifyingglass") {
+                                            coordinator.presentSheet(.queryConsole(roomID: room.id))
+                                        }
+                                        Button("Delete", systemImage: "trash", role: .destructive) {
+                                            viewModel.deleteRoom(room, from: modelContext)
+                                        }
                                     }
-                                    Button("Delete", systemImage: "trash", role: .destructive) {
-                                        viewModel.deleteRoom(room, from: modelContext)
-                                    }
-                                }
+                            }
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
                 }
             }
             .background(Color.spaceBlack)
@@ -53,5 +61,42 @@ struct HomeView: View {
             .padding(.trailing, 24)
             .padding(.bottom, 24)
         }
+    }
+
+    private var heroSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Search your home like a map.")
+                .font(SpatialFont.title)
+                .foregroundStyle(.white)
+            Text("Find lost objects with room memory, route hints, and live AR guidance.")
+                .font(SpatialFont.body)
+                .foregroundStyle(.dimLabel)
+
+            HStack(spacing: 12) {
+                Button {
+                    coordinator.presentSheet(.queryConsole(roomID: nil))
+                } label: {
+                    Label("Find anything", systemImage: "magnifyingglass")
+                        .font(SpatialFont.subheadline)
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.spatialCyan, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+
+                Button {
+                    coordinator.presentImmersive(.scanRoom)
+                } label: {
+                    Label("Add room", systemImage: "plus.viewfinder")
+                        .font(SpatialFont.subheadline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.glassWhite, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+            }
+        }
+        .padding(20)
+        .glassBackground(cornerRadius: 28)
     }
 }

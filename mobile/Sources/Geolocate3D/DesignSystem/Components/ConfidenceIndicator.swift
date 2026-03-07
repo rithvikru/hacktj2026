@@ -60,6 +60,15 @@ struct ConfidenceIndicator: View {
                     }
                 }
 
+            case .staleMemory:
+                Circle()
+                    .stroke(Color.warningAmber.opacity(0.4), lineWidth: 2)
+                    .overlay {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.warningAmber)
+                    }
+
             case .noResult:
                 Circle()
                     .stroke(Color.dimLabel, lineWidth: 1)

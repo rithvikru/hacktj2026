@@ -42,7 +42,8 @@ ExecutorName = Literal[
 ]
 SessionMode = Literal["live", "saved"]
 FrameSelectionMode = Literal["live_priority", "saved_priority", "hybrid", "explicit_frame_refs"]
-ResultType = Literal["detected", "last_seen", "signal_estimated", "likely_hidden", "not_found"]
+ResultType = Literal["detected", "last_seen", "signal_estimated", "stale_memory", "likely_hidden", "not_found"]
+ConfidenceState = Literal["live_seen", "last_seen", "likely_hidden", "stale_memory", "not_found"]
 HypothesisType = Literal["cooperative", "tagged", "inferred"]
 AmbiguityType = Literal["target", "attribute", "relation", "reference"]
 
@@ -60,6 +61,8 @@ class ObservationSummary(APIDTOModel):
     observed_at: str | None = None
     evidence_class: ResultType | None = None
     source: str | None = None
+    room_id: str | None = None
+    room_name: str | None = None
     world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
 
 class SceneGraphSummary(APIDTOModel):
@@ -148,10 +151,16 @@ class SearchResultDTO(APIDTOModel):
     label: str
     result_type: ResultType
     confidence: float = Field(ge=0.0, le=1.0)
+    confidence_state: ConfidenceState | None = None
     world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
     bbox_xyxy_norm: list[float] | None = Field(default=None, min_length=4, max_length=4)
     frame_id: str | None = None
     mask_ref: str | None = None
+    room_id: str | None = None
+    room_name: str | None = None
+    recency_seconds: float | None = Field(default=None, ge=0.0)
+    memory_freshness: float | None = Field(default=None, ge=0.0, le=1.0)
+    route_hint: str | None = None
     model_id: str
     model_version: str
     evidence: list[str] = Field(default_factory=list)

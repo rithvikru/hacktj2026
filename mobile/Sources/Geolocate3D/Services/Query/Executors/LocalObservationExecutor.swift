@@ -30,7 +30,12 @@ struct LocalObservationExecutor {
             confidence: topMatch.confidence,
             explanation: "Found \(matches.count) local match\(matches.count == 1 ? "" : "es") for \"\(label)\" from \(visibilityDescription).",
             evidence: ["local-observation-store"],
-            timestamp: topMatch.observedAt
+            timestamp: topMatch.observedAt,
+            confidenceState: confidenceState(for: topMatch),
+            roomName: topMatch.room?.name,
+            recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
+            memoryFreshness: memoryFreshness(for: topMatch.observedAt),
+            routeHint: topMatch.room?.name.map { "Head to \($0)." }
         )
 
         return .init(result: result, observations: Array(matches.prefix(5)))
@@ -63,7 +68,12 @@ struct LocalObservationExecutor {
             confidence: 1,
             explanation: "Found \(uniqueLabels.count) object type\(uniqueLabels.count == 1 ? "" : "s"): \(preview)",
             evidence: ["local-observation-store"],
-            timestamp: matches.first?.observedAt ?? Date()
+            timestamp: matches.first?.observedAt ?? Date(),
+            confidenceState: .liveSeen,
+            roomName: matches.first?.room?.name,
+            recencySeconds: matches.first.map { Date().timeIntervalSince($0.observedAt) },
+            memoryFreshness: matches.first.map { memoryFreshness(for: $0.observedAt) },
+            routeHint: matches.first?.room?.name.map { "Start in \($0)." }
         )
 
         return .init(result: result, observations: Array(matches.prefix(5)))
@@ -108,7 +118,12 @@ struct LocalObservationExecutor {
             confidence: min(subjectObservation.confidence, referenceObservation.confidence),
             explanation: explanation,
             evidence: ["local-observation-store", "scene-graph-lite"],
-            timestamp: max(subjectObservation.observedAt, referenceObservation.observedAt)
+            timestamp: max(subjectObservation.observedAt, referenceObservation.observedAt),
+            confidenceState: confidenceState(for: subjectObservation),
+            roomName: subjectObservation.room?.name,
+            recencySeconds: Date().timeIntervalSince(subjectObservation.observedAt),
+            memoryFreshness: memoryFreshness(for: subjectObservation.observedAt),
+            routeHint: subjectObservation.room?.name.map { "Head to \($0)." }
         )
 
         return .init(result: result, observations: [subjectObservation, referenceObservation])
@@ -127,7 +142,12 @@ struct LocalObservationExecutor {
                 confidence: topMatch.confidence,
                 explanation: "Matched \"\(text)\" against local room memory.",
                 evidence: ["local-observation-store"],
-                timestamp: topMatch.observedAt
+                timestamp: topMatch.observedAt,
+                confidenceState: confidenceState(for: topMatch),
+                roomName: topMatch.room?.name,
+                recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
+                memoryFreshness: memoryFreshness(for: topMatch.observedAt),
+                routeHint: topMatch.room?.name.map { "Head to \($0)." }
             )
             return .init(result: result, observations: Array(matches.prefix(5)))
         }
@@ -201,11 +221,33 @@ struct LocalObservationExecutor {
         case .signal:
             return .signalEstimated
         default:
+            if Date().timeIntervalSince(observation.observedAt) > 86400 {
+                return .staleMemory
+            }
             if observation.visibilityState == .visible {
                 return observation.confidence >= 0.8 ? .confirmedHigh : .confirmedMedium
             }
             return .lastSeen
         }
+    }
+
+    private func confidenceState(for observation: ObjectObservation) -> SearchConfidenceState {
+        if observation.source == .signal {
+            return .liveSeen
+        }
+        let age = Date().timeIntervalSince(observation.observedAt)
+        if age <= 300, observation.visibilityState == .visible {
+            return .liveSeen
+        }
+        if age > 86400 {
+            return .staleMemory
+        }
+        return .lastSeen
+    }
+
+    private func memoryFreshness(for observedAt: Date) -> Double {
+        let freshness = 1.0 - (Date().timeIntervalSince(observedAt) / 604800.0)
+        return max(0.0, min(freshness, 1.0))
     }
 
     private func makeNoResult(query: String, label: String, explanation: String) -> SearchResult {
@@ -217,7 +259,12 @@ struct LocalObservationExecutor {
             confidence: 0,
             explanation: explanation,
             evidence: [],
-            timestamp: Date()
+            timestamp: Date(),
+            confidenceState: .notFound,
+            roomName: nil,
+            recencySeconds: nil,
+            memoryFreshness: nil,
+            routeHint: nil
         )
     }
 }

@@ -19,8 +19,9 @@ _RESULT_PRIORITY: dict[ResultType, int] = {
     "detected": 0,
     "signal_estimated": 1,
     "last_seen": 2,
-    "likely_hidden": 3,
-    "not_found": 4,
+    "stale_memory": 3,
+    "likely_hidden": 4,
+    "not_found": 5,
 }
 
 @dataclass(slots=True)
@@ -121,6 +122,7 @@ def open_vocab_candidates_to_results(
                 label=planner_plan.canonical_query_label,
                 result_type="detected",
                 confidence=candidate.confidence,
+                confidence_state="live_seen",
                 world_transform16=candidate.world_transform16,
                 bbox_xyxy_norm=candidate.bbox_xyxy_norm,
                 frame_id=candidate.frame_id,

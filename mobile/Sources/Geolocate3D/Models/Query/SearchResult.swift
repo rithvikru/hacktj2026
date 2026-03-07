@@ -9,4 +9,9 @@ struct SearchResult: Identifiable {
     let explanation: String
     let evidence: [String]
     let timestamp: Date
+    let confidenceState: SearchConfidenceState
+    let roomName: String?
+    let recencySeconds: Double?
+    let memoryFreshness: Double?
+    let routeHint: String?
 }

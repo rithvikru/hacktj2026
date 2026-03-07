@@ -51,7 +51,7 @@ reconstruction = [
 packages = ["src/hacktj2026_ml"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100
