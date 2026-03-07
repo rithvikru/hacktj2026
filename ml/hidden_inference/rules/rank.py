@@ -114,6 +114,16 @@ def build_result(query_label: str, candidates: Iterable[Candidate]) -> HiddenHyp
     )
 
 
+def rank_for_query(
+    scene_graph: dict, observations: list[dict], query_label: str
+) -> HiddenHypothesisResult:
+    """Build candidates from scene graph data, score them, and return ranked result."""
+    from hidden_inference.features.build_features import build_candidates
+
+    candidates = build_candidates(scene_graph, observations, query_label)
+    return build_result(query_label, candidates)
+
+
 def main() -> None:
     args = parse_args()
     output_path = ML_ROOT / args.output
