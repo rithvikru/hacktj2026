@@ -3,6 +3,7 @@ import Foundation
 struct FrameRecord: Codable, Identifiable {
     let id: UUID
     let roomID: UUID
+    let sessionID: UUID
     let timestamp: Date
     let imagePath: String
     let depthPath: String?
@@ -10,14 +11,17 @@ struct FrameRecord: Codable, Identifiable {
     let cameraTransform16: [Float]
     let intrinsics9: [Float]
     let trackingState: String
-    var selectedForUpload: Bool
+    let selectedForTraining: Bool
+    let selectedForEval: Bool
 
-    init(roomID: UUID, timestamp: Date = Date(), imagePath: String,
+    init(roomID: UUID, sessionID: UUID, timestamp: Date = Date(), imagePath: String,
          depthPath: String? = nil, confidenceMapPath: String? = nil,
          cameraTransform16: [Float], intrinsics9: [Float],
-         trackingState: String, selectedForUpload: Bool = false) {
+         trackingState: String, selectedForTraining: Bool = false,
+         selectedForEval: Bool = false) {
         self.id = UUID()
         self.roomID = roomID
+        self.sessionID = sessionID
         self.timestamp = timestamp
         self.imagePath = imagePath
         self.depthPath = depthPath
@@ -25,6 +29,52 @@ struct FrameRecord: Codable, Identifiable {
         self.cameraTransform16 = cameraTransform16
         self.intrinsics9 = intrinsics9
         self.trackingState = trackingState
-        self.selectedForUpload = selectedForUpload
+        self.selectedForTraining = selectedForTraining
+        self.selectedForEval = selectedForEval
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id = "frame_id"
+        case roomID = "room_id"
+        case sessionID = "session_id"
+        case timestamp
+        case imagePath = "image_path"
+        case depthPath = "depth_path"
+        case cameraTransform16 = "camera_transform16"
+        case intrinsics9 = "intrinsics9"
+        case trackingState = "tracking_state"
+        case selectedForTraining = "selected_for_training"
+        case selectedForEval = "selected_for_eval"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        roomID = try container.decode(UUID.self, forKey: .roomID)
+        sessionID = try container.decode(UUID.self, forKey: .sessionID)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        imagePath = try container.decode(String.self, forKey: .imagePath)
+        depthPath = try container.decodeIfPresent(String.self, forKey: .depthPath)
+        confidenceMapPath = nil
+        cameraTransform16 = try container.decode([Float].self, forKey: .cameraTransform16)
+        intrinsics9 = try container.decode([Float].self, forKey: .intrinsics9)
+        trackingState = try container.decode(String.self, forKey: .trackingState)
+        selectedForTraining = try container.decode(Bool.self, forKey: .selectedForTraining)
+        selectedForEval = try container.decode(Bool.self, forKey: .selectedForEval)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(roomID, forKey: .roomID)
+        try container.encode(sessionID, forKey: .sessionID)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(imagePath, forKey: .imagePath)
+        try container.encodeIfPresent(depthPath, forKey: .depthPath)
+        try container.encode(cameraTransform16, forKey: .cameraTransform16)
+        try container.encode(intrinsics9, forKey: .intrinsics9)
+        try container.encode(trackingState, forKey: .trackingState)
+        try container.encode(selectedForTraining, forKey: .selectedForTraining)
+        try container.encode(selectedForEval, forKey: .selectedForEval)
     }
 }
