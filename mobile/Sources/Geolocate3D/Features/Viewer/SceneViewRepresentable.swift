@@ -497,7 +497,7 @@ struct SceneViewRepresentable: UIViewRepresentable {
         var projectedPositions: Binding<[UUID: CGPoint]>?
         var showObjects: Bool = true
 
-        @objc func updateProjections() {
+        @MainActor @objc func updateProjections() {
             guard showObjects,
                   let scnView,
                   let rootNode = scnView.scene?.rootNode,

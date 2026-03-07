@@ -12,6 +12,7 @@ struct FrameBundleManifest: Codable {
     let auxiliaryAssets: [FrameAuxiliaryAssets]
     let frames: [FrameRecord]
 
+    @MainActor
     init(
         roomID: UUID,
         sessionID: UUID,
@@ -68,9 +69,19 @@ struct KeyframeSelection: Codable {
 }
 
 struct AssetEncoding: Codable {
-    let rgb: String = "jpeg"
-    let depth: String = "png16_mm"
-    let confidence: String = "png8"
+    let rgb: String
+    let depth: String
+    let confidence: String
+
+    init(
+        rgb: String = "jpeg",
+        depth: String = "png16_mm",
+        confidence: String = "png8"
+    ) {
+        self.rgb = rgb
+        self.depth = depth
+        self.confidence = confidence
+    }
 }
 
 struct DeviceMetadata: Codable {
@@ -78,7 +89,7 @@ struct DeviceMetadata: Codable {
     let systemName: String
     let systemVersion: String
 
-    static func current() -> DeviceMetadata {
+    @MainActor static func current() -> DeviceMetadata {
         let device = UIDevice.current
         return DeviceMetadata(
             model: device.model,

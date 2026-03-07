@@ -20,6 +20,8 @@ from hacktj2026_ml.query_contracts import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OPEN_VOCAB_FRAME_LIMIT = 24
+
 
 class QueryToolkit(Protocol):
     def query_signal(self, request: PlannerRequest, plan: PlannerPlan) -> list[SearchResultDTO]: ...
@@ -217,25 +219,12 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         logger.info("No frames available for room %s", request.room_id)
         return []
 
-    # Collect image paths from frame_refs or all frames in the room
-    image_paths: list[Path] = []
-    if request.frame_refs:
-        for ref in request.frame_refs:
-            p = _resolve_room_file(room.frame_dir, ref)
-            if p.exists():
-                image_paths.append(p)
-    else:
-        for frame in room.frames:
-            filename = (
-                frame.get("image_path")
-                or frame.get("imagePath")
-                or frame.get("filename")
-                or frame.get("image")
-            )
-            if filename:
-                p = _resolve_room_file(room.frame_dir, filename)
-                if p.exists():
-                    image_paths.append(p)
+    image_paths = _select_room_image_paths(
+        room_frame_dir=room.frame_dir,
+        frames=room.frames,
+        frame_refs=request.frame_refs,
+        frame_limit=DEFAULT_OPEN_VOCAB_FRAME_LIMIT,
+    )
 
     if not image_paths:
         # Try to find any images in the frame directory
@@ -341,8 +330,13 @@ def _try_backproject(det, room, images: dict) -> list[float] | None:
         frame_name = Path(det.image_path).name
         frame_meta = None
         for f in room.frames:
-            fname = f.get("filename") or f.get("image", "")
-            if fname == frame_name:
+            references = [
+                f.get("image_path"),
+                f.get("imagePath"),
+                f.get("filename"),
+                f.get("image"),
+            ]
+            if any(Path(str(reference)).name == frame_name for reference in references if reference):
                 frame_meta = f
                 break
 
@@ -391,6 +385,66 @@ def _resolve_room_file(bundle_dir: Path, reference: str) -> Path:
     if (bundle_dir / candidate).exists():
         return bundle_dir / candidate
     return bundle_dir / candidate.name
+
+
+def _select_room_image_paths(
+    *,
+    room_frame_dir: Path,
+    frames: list[dict],
+    frame_refs: list[str],
+    frame_limit: int,
+) -> list[Path]:
+    if frame_refs:
+        return _dedupe_existing_paths(
+            _resolve_room_file(room_frame_dir, ref)
+            for ref in frame_refs
+        )
+
+    resolved = _dedupe_existing_paths(
+        _resolve_room_file(
+            room_frame_dir,
+            frame.get("image_path")
+            or frame.get("imagePath")
+            or frame.get("filename")
+            or frame.get("image")
+            or "",
+        )
+        for frame in frames
+        if (
+            frame.get("image_path")
+            or frame.get("imagePath")
+            or frame.get("filename")
+            or frame.get("image")
+        )
+    )
+    if len(resolved) <= frame_limit:
+        return resolved
+
+    stride = max(len(resolved) // frame_limit, 1)
+    sampled = resolved[::stride]
+    if len(sampled) > frame_limit:
+        sampled = sampled[:frame_limit]
+    if sampled and sampled[-1] != resolved[-1] and len(sampled) < frame_limit:
+        sampled.append(resolved[-1])
+    elif sampled and sampled[-1] != resolved[-1]:
+        sampled[-1] = resolved[-1]
+    logger.info(
+        "Sampling %d/%d room frames for open-vocab search",
+        len(sampled),
+        len(resolved),
+    )
+    return sampled
+
+
+def _dedupe_existing_paths(paths) -> list[Path]:
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        if not path.exists() or path in seen:
+            continue
+        deduped.append(path)
+        seen.add(path)
+    return deduped
 
 
 def _sample_depth_at_bbox_center(

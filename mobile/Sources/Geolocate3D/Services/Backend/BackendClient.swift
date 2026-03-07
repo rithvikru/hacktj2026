@@ -4,19 +4,39 @@ import simd
 @Observable
 @MainActor
 final class BackendClient {
+    static let defaultBaseURL = URL(string: "http://localhost:8000")!
+    private static let storedBaseURLKey = "hacktj2026.backendBaseURL"
+
     var baseURL: URL
     var isConnected: Bool = false
 
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    init(baseURL: URL = URL(string: "http://localhost:8000")!) {
-        self.baseURL = baseURL
+    init(baseURL: URL? = nil) {
+        self.baseURL = baseURL ?? Self.storedBaseURL() ?? Self.defaultBaseURL
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         self.session = URLSession(configuration: config)
     }
 
+    var baseURLString: String {
+        baseURL.absoluteString
+    }
+
+    func updateBaseURL(_ urlString: String) throws {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let scheme = url.scheme, !scheme.isEmpty else {
+            throw URLError(.badURL)
+        }
+        baseURL = url
+        UserDefaults.standard.set(url.absoluteString, forKey: Self.storedBaseURLKey)
+    }
+
+    func resetBaseURL() {
+        baseURL = Self.defaultBaseURL
+        UserDefaults.standard.set(Self.defaultBaseURL.absoluteString, forKey: Self.storedBaseURLKey)
+    }
     func createRoom(id preferredRoomID: UUID? = nil, name: String, metadata: [String: String] = [:]) async throws -> UUID {
         let url = baseURL.appendingPathComponent("rooms")
         var request = URLRequest(url: url)
@@ -227,6 +247,11 @@ final class BackendClient {
             throw URLError(.badURL)
         }
         return baseURL.appendingPathComponent(trimmedPath)
+    }
+
+    private static func storedBaseURL() -> URL? {
+        guard let value = UserDefaults.standard.string(forKey: storedBaseURLKey) else { return nil }
+        return URL(string: value)
     }
 
     private func appendDirectoryFiles(
