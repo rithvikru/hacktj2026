@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "LocalCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "localAcceleratorAvailable": {
+          "default": false,
+          "title": "Localacceleratoravailable",
+          "type": "boolean"
+        },
+        "supportedLabels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supportedlabels",
+          "type": "array"
+        }
+      },
+      "title": "LocalCapabilities",
+      "type": "object"
+    },
+    "SignalCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "cooperativeAvailable": {
+          "default": false,
+          "title": "Cooperativeavailable",
+          "type": "boolean"
+        },
+        "tagSupportAvailable": {
+          "default": false,
+          "title": "Tagsupportavailable",
+          "type": "boolean"
+        }
+      },
+      "title": "SignalCapabilities",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "frameRefs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Framerefs",
+      "type": "array"
+    },
+    "frameSelectionMode": {
+      "default": "live_priority",
+      "enum": [
+        "live_priority",
+        "saved_priority",
+        "hybrid",
+        "explicit_frame_refs"
+      ],
+      "title": "Frameselectionmode",
+      "type": "string"
+    },
+    "localCapabilities": {
+      "$ref": "#/$defs/LocalCapabilities"
+    },
+    "queryText": {
+      "title": "Querytext",
+      "type": "string"
+    },
+    "sessionMode": {
+      "default": "live",
+      "enum": [
+        "live",
+        "saved"
+      ],
+      "title": "Sessionmode",
+      "type": "string"
+    },
+    "signalCapabilities": {
+      "$ref": "#/$defs/SignalCapabilities"
+    },
+    "voiceTranscriptConfidence": {
+      "anyOf": [
+        {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Voicetranscriptconfidence"
+    }
+  },
+  "required": [
+    "queryText"
+  ],
+  "title": "QueryRequest",
+  "type": "object"
+}

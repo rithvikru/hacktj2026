@@ -1,8 +1,9 @@
-import ARKit
+@preconcurrency import ARKit
 import RealityKit
 
 /// ARSessionDelegate coordinator for ARViewRepresentable.
 /// Forwards frame updates to the view model for screen projection and tracking state.
+@MainActor
 final class ARViewCoordinator: NSObject, ARSessionDelegate {
     weak var arView: ARView?
     private let sessionManager: SpatialSessionManager
@@ -13,7 +14,7 @@ final class ARViewCoordinator: NSObject, ARSessionDelegate {
         self.viewModel = viewModel
     }
 
-    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+    nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         Task { @MainActor [weak self] in
             guard let self, let arView = self.arView else { return }
 
@@ -27,7 +28,7 @@ final class ARViewCoordinator: NSObject, ARSessionDelegate {
         }
     }
 
-    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+    nonisolated func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
         // Placeholder for handling new anchors (plane detection, object anchors, etc.)
     }
 }

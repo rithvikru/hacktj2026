@@ -15,6 +15,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     var detectedObjectCount: Int = 0
     var savedRoomID: UUID?
 
+    override init() { super.init() }
     nonisolated required init?(coder: NSCoder) { nil }
     nonisolated func encode(with coder: NSCoder) {}
 
@@ -36,7 +37,8 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     private var lastCapturedTransform: simd_float4x4?
 
     deinit {
-        captureSamplingTask?.cancel()
+        let task = MainActor.assumeIsolated { captureSamplingTask }
+        task?.cancel()
     }
 
     func startSession(captureView: RoomCaptureView) {

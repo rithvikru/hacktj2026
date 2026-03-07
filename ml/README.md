@@ -32,6 +32,7 @@ uv run python datasets/tools/download_coco_2017.py --output-root datasets/extern
 uv run python open_vocab/grounding_dino/run_grounding.py --prompt "wallet"
 uv run python reconstruction/da3/run_pipeline.py --room-id demo-room --frame-bundle ../docs
 uv run python hidden_inference/rules/rank.py --query-label wallet
+uv run --group serving python serving/tools/export_contract_schemas.py
 uv run uvicorn serving.api.app:app --app-dir . --reload
 ```
 
@@ -49,7 +50,7 @@ Dataset bootstrap notes:
 - `open_vocab/`: grounding, masking, retrieval, and evaluation
 - `reconstruction/`: delayed reconstruction and dense asset generation
 - `hidden_inference/`: candidate features, ranking, and evaluation
-- `serving/`: API, worker stubs, and model manifests
+- `serving/`: API, contract schemas, worker stubs, and model manifests
 - `src/hacktj2026_ml/`: shared Python utilities and contracts
 
 Acquisition and collection planning lives in:

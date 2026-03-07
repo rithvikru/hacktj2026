@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "HiddenHypothesis": {
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "world_transform16": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 16,
+              "minItems": 16,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "World Transform16"
+        }
+      },
+      "required": [
+        "rank",
+        "confidence",
+        "reason_codes"
+      ],
+      "title": "HiddenHypothesis",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/HiddenHypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "model_id": {
+      "title": "Model Id",
+      "type": "string"
+    },
+    "model_version": {
+      "title": "Model Version",
+      "type": "string"
+    },
+    "query_label": {
+      "title": "Query Label",
+      "type": "string"
+    },
+    "result_type": {
+      "const": "likely_hidden",
+      "title": "Result Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "result_type",
+    "model_id",
+    "model_version",
+    "query_label",
+    "hypotheses"
+  ],
+  "title": "HiddenHypothesisResult",
+  "type": "object"
+}

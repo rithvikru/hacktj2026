@@ -1,0 +1,493 @@
+{
+  "$defs": {
+    "HypothesisDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "generatedAt": {
+          "title": "Generatedat",
+          "type": "string"
+        },
+        "hypothesisType": {
+          "enum": [
+            "cooperative",
+            "tagged",
+            "inferred"
+          ],
+          "title": "Hypothesistype",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "occluderObjectId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Occluderobjectid"
+        },
+        "queryLabel": {
+          "title": "Querylabel",
+          "type": "string"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "reasonCodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasoncodes",
+          "type": "array"
+        },
+        "regionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Regionid"
+        },
+        "supportObjectId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supportobjectid"
+        },
+        "worldTransform16": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 16,
+              "minItems": 16,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worldtransform16"
+        }
+      },
+      "required": [
+        "id",
+        "queryLabel",
+        "hypothesisType",
+        "rank",
+        "confidence",
+        "explanation",
+        "generatedAt"
+      ],
+      "title": "HypothesisDTO",
+      "type": "object"
+    },
+    "PlannerAmbiguity": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguityType": {
+          "enum": [
+            "target",
+            "attribute",
+            "relation",
+            "reference"
+          ],
+          "title": "Ambiguitytype",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explanation"
+        }
+      },
+      "required": [
+        "ambiguityType",
+        "candidates"
+      ],
+      "title": "PlannerAmbiguity",
+      "type": "object"
+    },
+    "PlannerPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguities": {
+          "items": {
+            "$ref": "#/$defs/PlannerAmbiguity"
+          },
+          "title": "Ambiguities",
+          "type": "array"
+        },
+        "attributes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Attributes",
+          "type": "array"
+        },
+        "canUseLocalAccelerator": {
+          "title": "Canuselocalaccelerator",
+          "type": "boolean"
+        },
+        "canonicalQueryLabel": {
+          "title": "Canonicalquerylabel",
+          "type": "string"
+        },
+        "executorOrder": {
+          "items": {
+            "enum": [
+              "signal",
+              "backend_open_vocab",
+              "local_observation",
+              "scene_graph",
+              "hidden_inference"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Executororder",
+          "type": "array"
+        },
+        "intent": {
+          "enum": [
+            "findObject",
+            "findLikelyObjectLocation",
+            "countObjects",
+            "listObjectsInSection",
+            "showNearest",
+            "showSupportingSurface",
+            "showContainedItems",
+            "explainWhy"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "normalizedQuery": {
+          "title": "Normalizedquery",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "queryId": {
+          "title": "Queryid",
+          "type": "string"
+        },
+        "queryText": {
+          "title": "Querytext",
+          "type": "string"
+        },
+        "relations": {
+          "items": {
+            "$ref": "#/$defs/PlannerRelation"
+          },
+          "title": "Relations",
+          "type": "array"
+        },
+        "requiresBackend": {
+          "title": "Requiresbackend",
+          "type": "boolean"
+        },
+        "searchClass": {
+          "enum": [
+            "planner_led_open_vocab_visible_search",
+            "local_accelerated_visible_search",
+            "last_seen_retrieval",
+            "signal_based_localization",
+            "hidden_object_likelihood_inference"
+          ],
+          "title": "Searchclass",
+          "type": "string"
+        },
+        "shouldComputeHiddenFallback": {
+          "title": "Shouldcomputehiddenfallback",
+          "type": "boolean"
+        },
+        "targetPhrase": {
+          "title": "Targetphrase",
+          "type": "string"
+        }
+      },
+      "required": [
+        "queryId",
+        "queryText",
+        "normalizedQuery",
+        "intent",
+        "targetPhrase",
+        "canonicalQueryLabel",
+        "searchClass",
+        "executorOrder",
+        "requiresBackend",
+        "canUseLocalAccelerator",
+        "shouldComputeHiddenFallback"
+      ],
+      "title": "PlannerPlan",
+      "type": "object"
+    },
+    "PlannerRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation",
+        "reference"
+      ],
+      "title": "PlannerRelation",
+      "type": "object"
+    },
+    "SearchResultDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "bboxXyxyNorm": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bboxxyxynorm"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "frameId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frameid"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "maskRef": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maskref"
+        },
+        "modelId": {
+          "title": "Modelid",
+          "type": "string"
+        },
+        "modelVersion": {
+          "title": "Modelversion",
+          "type": "string"
+        },
+        "resultType": {
+          "enum": [
+            "detected",
+            "last_seen",
+            "signal_estimated",
+            "likely_hidden",
+            "not_found"
+          ],
+          "title": "Resulttype",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "worldTransform16": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 16,
+              "minItems": 16,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worldtransform16"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "resultType",
+        "confidence",
+        "modelId",
+        "modelVersion",
+        "explanation",
+        "timestamp"
+      ],
+      "title": "SearchResultDTO",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "explanation": {
+      "title": "Explanation",
+      "type": "string"
+    },
+    "generatedAt": {
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/HypothesisDTO"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "plannerPlan": {
+      "$ref": "#/$defs/PlannerPlan"
+    },
+    "primaryResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SearchResultDTO"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "queryId": {
+      "title": "Queryid",
+      "type": "string"
+    },
+    "queryLabel": {
+      "title": "Querylabel",
+      "type": "string"
+    },
+    "queryText": {
+      "title": "Querytext",
+      "type": "string"
+    },
+    "resultType": {
+      "enum": [
+        "detected",
+        "last_seen",
+        "signal_estimated",
+        "likely_hidden",
+        "not_found"
+      ],
+      "title": "Resulttype",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/SearchResultDTO"
+      },
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "queryId",
+    "queryText",
+    "queryLabel",
+    "resultType",
+    "explanation",
+    "generatedAt",
+    "plannerPlan"
+  ],
+  "title": "QueryResponseDTO",
+  "type": "object"
+}
