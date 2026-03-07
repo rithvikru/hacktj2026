@@ -7,8 +7,8 @@ Unverified claims (NOAM, ILGS, specific benchmark numbers) are excluded.
 
 | Plane | Responsibilities |
 |-|-|
-| iPhone Client | AR session, RoomPlan scan, local detection, relocalization, AR overlays, local object memory, query input, peer discovery |
-| Backend Compute | Delayed reconstruction, frame indexing, open-vocabulary search, segmentation, scene graph, hidden-object inference, embeddings |
+| iPhone Client | AR session, RoomPlan scan, relocalization, AR overlays, local object memory, query input, optional local acceleration, peer discovery |
+| Backend Compute | Query planning, delayed reconstruction, frame indexing, open-vocabulary search, segmentation, scene graph, hidden-object inference, embeddings |
 | Persistence | Room assets, frame bundles, embeddings, scene graph, object observations, hypotheses, query results |
 
 ## 2. Four Result Confidence Classes
@@ -20,14 +20,15 @@ Unverified claims (NOAM, ILGS, specific benchmark numbers) are excluded.
 | Signal Confirmed | UWB / BLE | Medium-high certainty, current | Floating signal beacon |
 | Likely Hidden | Probabilistic model | Variable probability, inferred | Volumetric heat region / glow mesh |
 
-## 3. Edge Detection Pipeline
+## 3. Visible Search Stack
 
-- Closed-set Core ML model optimized for Apple Neural Engine
-- Runs on downscaled frames at 2-10 fps, dynamically adjusted based on `ProcessInfo.thermalState`
-- Detection flow: 2D bounding box -> depth estimation (LiDAR scene depth preferred, raycast against AR mesh as fallback) -> camera-space 3D point -> world-space transform
+- Natural-language planner layer resolves the user query before search execution
+- Primary visible-search path is backend open-vocabulary grounding plus segmentation plus retrieval
+- Optional local `Core ML` detector may be used as an accelerator for a small label pack
+- Detection flow remains: 2D region -> depth estimation (LiDAR scene depth preferred, raycast against AR mesh as fallback) -> camera-space 3D point -> world-space transform
 - Observation fusion: merge same-label detections within 0.4m radius and 2s window
-- Preserves highest-confidence evidence per track
-- Downgrades to "Last Seen" when object leaves frustum or becomes occluded
+- Preserve highest-confidence evidence per track
+- Downgrade stable observations to "Last Seen" when object leaves frustum or becomes occluded
 
 ## 4. Relocalization
 
@@ -91,7 +92,7 @@ General approach: use pre-trained 2D vision-language models (CLIP, OpenSeg, LSeg
 
 **Key challenge:** view inconsistency — different language embeddings assigned to the same object from different angles due to alpha-blending ambiguity. Solutions involve cross-frame identity tracking (e.g., SAM 2 for consistent segmentation across views) and contrastive losses to enforce embedding consistency.
 
-## 7. Open-Vocabulary Search (Backend Tier 2)
+## 7. Open-Vocabulary Search (Primary Visible Path)
 
 1. Client sends keyframes to backend
 2. **Grounding DINO** (arxiv 2303.05499): text-conditioned region proposals from arbitrary query strings
@@ -159,8 +160,8 @@ EXPLAIN hypothesis_id="..."
 ### Executor Priority Order
 1. Signal executor (check for active hardware tag)
 2. Local observation executor (recent on-device observations)
-3. Scene graph executor (traverse relational graph)
-4. Backend retrieval executor (open-vocabulary pipeline)
+3. Backend retrieval executor (open-vocabulary pipeline)
+4. Scene graph executor (traverse relational graph)
 5. Hidden inference executor (probabilistic pipeline)
 
 ## 11. Performance Targets
@@ -169,7 +170,7 @@ EXPLAIN hypothesis_id="..."
 | Metric | Target |
 |-|-|
 | Relocalization | < 10s |
-| On-device detector | 2-10 fps (thermal-dependent) |
+| Optional local accelerator | 2-10 fps (thermal-dependent) |
 | Query parse | < 300ms |
 | AR overlay update after local result | < 100ms |
 
@@ -220,17 +221,17 @@ All responses must include: `resultType`, `confidence`, `worldTransform`, `evide
 
 1. Spatial foundation (AR + RoomPlan scan)
 2. Room persistence and relocalization
-3. On-device closed-set search
-4. AR result overlays
-5. Room graph and query DSL
-6. Saved room viewer with annotations
-7. Backend frame ingestion
-8. Delayed reconstruction
-9. Backend open-vocabulary search
-10. Hidden-object likelihood engine
-11. Cooperative UWB path
-12. Tagged-object path
-13. Dense viewer and advanced explanation layer
+3. Backend frame ingestion
+4. Planner-led open-vocabulary search
+5. AR result overlays
+6. Room graph and query DSL
+7. Saved room viewer with annotations
+8. Hidden-object likelihood engine
+9. Delayed reconstruction
+10. Cooperative UWB path
+11. Tagged-object path
+12. Dense viewer and advanced explanation layer
+13. Optional local accelerator
 
 ## 16. Open Implementation Questions
 

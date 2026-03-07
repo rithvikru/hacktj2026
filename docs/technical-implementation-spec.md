@@ -115,10 +115,10 @@ Use a three-plane architecture:
 
 ```text
 iPhone Client
-  -> live capture, AR, local detection, relocalization, UI, local cache
+  -> live capture, AR, relocalization, UI, local cache, optional local acceleration
 
 Backend Compute Plane
-  -> reconstruction, open-vocabulary detection, segmentation, scene graph indexing, query planning
+  -> query planning, open-vocabulary detection, segmentation, retrieval, reconstruction, scene graph indexing
 
 Persistence Plane
   -> room assets, frame bundles, embeddings, scene graph, object memory, search history
@@ -131,7 +131,7 @@ The iPhone client is responsible for:
 1. AR session management
 2. RoomPlan scanning
 3. local room relocalization
-4. low-latency visible-object search
+4. sparse frame capture and local result presentation
 5. AR guidance overlays
 6. local object memory
 7. typed and spoken query input
@@ -174,8 +174,8 @@ Use this stack unless a future revision changes it:
 | Mobile app | `Swift`, `SwiftUI`, `RealityKit`, `ARKit`, `RoomPlan` |
 | Local persistence | `SwiftData` + asset files |
 | Voice | `Speech` |
-| Query normalization | `NaturalLanguage` + structured parser |
-| Local detection | `Vision` + `Core ML` |
+| Query normalization | `NaturalLanguage` + GPT-class planner service or equivalent |
+| Local detection | optional `Vision` + `Core ML` accelerator |
 | Local rendering | `RealityKit` + optional custom `Metal` materials |
 | Peer discovery | `MultipeerConnectivity` |
 | UWB | `Nearby Interaction` |
@@ -237,8 +237,8 @@ All searches must be classified before execution.
 
 ### 9.1 Search Classes
 
-1. `closed-set visible search`
-2. `open-vocabulary visible search`
+1. `planner-led open-vocabulary visible search`
+2. `optional local accelerated visible search`
 3. `last-seen retrieval`
 4. `signal-based localization`
 5. `hidden-object likelihood inference`
@@ -270,10 +270,11 @@ Deliver:
 
 Deliver:
 
-1. on-device closed-set detection
+1. planner-led live search
 2. 3D localization
 3. observation tracking
 4. AR overlay guidance
+5. optional on-device accelerator
 
 ### 10.3 Workstream 3: Delayed Intelligence
 
@@ -297,7 +298,7 @@ Deliver:
 Deliver:
 
 1. typed and voice input
-2. query parser
+2. LLM-backed query planner
 3. search planner
 4. explanation and evidence layer
 
@@ -516,36 +517,36 @@ Implement relocalization as follows:
 
 Use a two-tier detection stack.
 
-### 17.1 Tier 1: On-Device Closed-Set Detector
+### 17.1 Tier 1: Planner-Led Open-Vocabulary Search
 
 Purpose:
 
-1. low-latency search for known personal objects
-2. resilient demo and daily-use path
+1. natural-language search for arbitrary user queries
+2. primary visible-object search path for the product
 
 Implementation:
 
-1. train closed-set object detector with `Create ML` or custom Core ML conversion
+1. use planner output to preserve user phrasing, attributes, and spatial relations
+2. select live frames or saved frames for backend search
+3. run text-conditioned detection with `Grounding DINO`
+4. refine masks with `SAM 2` or equivalent
+5. use embeddings to re-rank candidates when phrase ambiguity remains
+6. localize detections into 3D using depth and raycast fusion
+
+### 17.2 Tier 2: Optional Local Accelerator
+
+Purpose:
+
+1. reduce latency for a small set of very common objects
+2. preserve degraded behavior when backend search is unavailable
+
+Implementation:
+
+1. train a small `Core ML` detector only if justified by product telemetry and benchmark quality
 2. run on downscaled frames
 3. process at `2-10 fps` depending on thermal budget
 4. maintain tracks between detector passes
-5. localize detections into 3D using depth and raycast fusion
-
-### 17.2 Tier 2: Backend Open-Vocabulary Detector
-
-Purpose:
-
-1. search by arbitrary label or phrase
-2. support queries like `show me the blue notebook`
-
-Implementation:
-
-1. select keyframes from the current live session or saved room
-2. send them to backend
-3. run text-conditioned detection with `Grounding DINO`
-4. refine masks with `SAM 2` or equivalent
-5. project detections back into 3D room coordinates using saved poses and depth
-6. return ranked object candidates to client
+5. treat this as acceleration and fallback, not as the product vocabulary
 
 ## 18. 3D Localization and Tracking
 
@@ -780,8 +781,8 @@ Planner outputs:
 Planner order:
 
 1. if tagged or cooperative target exists, prefer signal path
-2. else if closed-set local model supports target, run local visible search
-3. else if backend is available, run open-vocabulary visible search
+2. else if backend is available, run planner-led open-vocabulary visible search
+3. else if optional local accelerator supports the target, run local visible search
 4. else if prior observation exists, run last-seen retrieval
 5. always compute hidden-object likelihood if target remains unresolved
 
@@ -981,9 +982,10 @@ Constraints:
 Responsibilities:
 
 1. room relocalization
-2. on-device closed-set visible search
+2. planner-led open-vocabulary visible search over live frames
 3. local last-seen retrieval
 4. live AR guidance
+5. optional local acceleration
 
 ### 29.2 Delayed Path
 
@@ -1007,7 +1009,7 @@ These are engineering targets, not scope reducers.
 ### 30.1 Mobile Targets
 
 1. relocalization target under `10s`
-2. on-device detector target `2-10 fps`
+2. optional local accelerator target `2-10 fps`
 3. query parse under `300ms`
 4. AR overlay update under `100ms` after local result resolution
 
@@ -1042,8 +1044,8 @@ The full system is acceptable when all of these are true:
 
 1. A room can be scanned, saved, reopened, and relocalized.
 2. The app supports both live search and delayed search.
-3. Known personal objects can be detected and localized in 3D on-device.
-4. Arbitrary query phrases can be resolved by the backend open-vocabulary path.
+3. Arbitrary natural-language object queries can be grounded and localized in 3D.
+4. If a local accelerator is shipped, it behaves as an optimization layer and not as the product vocabulary.
 5. The saved room viewer supports object and hypothesis inspection.
 6. Cooperative hidden-target mode works with a second iPhone.
 7. Tagged-object mode works with a custom signal source.
@@ -1055,17 +1057,17 @@ Implement in this order:
 
 1. spatial foundation
 2. room persistence and relocalization
-3. on-device closed-set search
-4. AR result overlays
-5. room graph and query DSL
-6. saved room viewer with annotations
-7. backend frame ingestion
-8. delayed reconstruction
-9. backend open-vocabulary search
-10. hidden-object likelihood engine
-11. cooperative UWB path
-12. tagged-object path
-13. dense viewer and advanced explanation layer
+3. backend frame ingestion
+4. planner-led open-vocabulary search
+5. AR result overlays
+6. room graph and query DSL
+7. saved room viewer with annotations
+8. hidden-object likelihood engine
+9. delayed reconstruction
+10. cooperative UWB path
+11. tagged-object path
+12. dense viewer and advanced explanation layer
+13. optional local accelerator
 
 This order is mandatory for dependency reasons, not for scope reduction.
 
@@ -1076,13 +1078,15 @@ These decisions are locked unless revised:
 1. The client is native iOS, not cross-platform.
 2. RoomPlan is the room-structure foundation.
 3. ARWorldMap is the relocalization foundation.
-4. The system has both local and backend search paths.
-5. Hidden-object support is implemented as:
+4. The product query surface is natural language.
+5. The primary visible-search path is planner-led open-vocabulary search.
+6. The system may ship an optional local accelerator, but it does not define product vocabulary.
+7. Hidden-object support is implemented as:
    - cooperative sensing
    - tagged sensing
    - probabilistic inference
-6. Dense delayed reconstruction is part of the architecture.
-7. The system must preserve evidence provenance in every result.
+8. Dense delayed reconstruction is part of the architecture.
+9. The system must preserve evidence provenance in every result.
 
 ## 35. Explicit Non-Goals
 

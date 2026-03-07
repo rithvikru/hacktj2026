@@ -56,13 +56,15 @@ final class FrameBundleWriter {
             try writeDepthPNG(from: sceneDepth.depthMap, to: depthURL)
             depthPath = depthURL.path
 
-            let confidenceURL = persistence.frameConfidenceURL(
-                roomID: roomID,
-                sessionID: sessionID,
-                frameID: frameID
-            )
-            try writeConfidencePNG(from: sceneDepth.confidenceMap, to: confidenceURL)
-            confidenceMapPath = confidenceURL.path
+            if let confidenceBuffer = sceneDepth.confidenceMap {
+                let confidenceURL = persistence.frameConfidenceURL(
+                    roomID: roomID,
+                    sessionID: sessionID,
+                    frameID: frameID
+                )
+                try writeConfidencePNG(from: confidenceBuffer, to: confidenceURL)
+                confidenceMapPath = confidenceURL.path
+            }
         }
 
         return PersistedFrameAssets(

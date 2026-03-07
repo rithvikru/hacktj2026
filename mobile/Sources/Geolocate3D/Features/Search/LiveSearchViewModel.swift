@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import RealityKit
 import ARKit
 import simd
@@ -39,7 +40,7 @@ final class LiveSearchViewModel {
     private let intentParser = IntentParser()
     private let searchPlanner = SearchPlanner()
 
-    private var entityMap: [UUID: AnchorEntity] = []
+    @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
 
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
