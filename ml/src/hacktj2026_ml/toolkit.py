@@ -54,8 +54,8 @@ class DefaultQueryToolkit:
             query_text=request.query_text,
             normalized_query=request.normalized_query,
             result_type="detected" if candidates else "not_found",
-            model_id="m2.open_vocab.grounding_dino+clip",
-            model_version="0.2.0",
+            model_id="m2.open_vocab.grounding_dino+sam2+clip+fusion",
+            model_version="0.4.0",
             candidates=candidates,
         )
 
@@ -194,7 +194,7 @@ def now_iso() -> str:
 
 
 def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabCandidateDTO]:
-    """Run the full open-vocab pipeline: Grounding DINO -> SAM2 -> CLIP rerank -> backproject.
+    """Run the full open-vocab pipeline: Grounding DINO -> SAM2 -> CLIP rerank -> fused 3D grounding.
 
     Falls back to dummy results if ML dependencies are not installed.
     """
@@ -202,6 +202,7 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         import numpy as np
         from PIL import Image
 
+        from open_vocab.fusion import fuse_grounded_detections
         from open_vocab.grounding_dino.run_grounding import detect
         from open_vocab.retrieval.build_index import build_index, query_index
         from open_vocab.sam2.run_segmentation import segment
@@ -259,27 +260,43 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
             except Exception:
                 pass
 
-    # 3. Optional SAM 2 mask refinement (per image)
-    # We run segment for logging/metrics but use detections for the final result
+    # 3. SAM 2 mask refinement, keyed back to the original detection index.
+    masks_by_detection_idx: dict[int, object] = {}
     for img_path, img_arr in images.items():
-        dets_for_img = [d for d in detections if d.image_path == img_path]
-        bboxes = [d.bbox_xyxy_norm for d in dets_for_img]
+        dets_for_img = [(idx, det) for idx, det in enumerate(detections) if det.image_path == img_path]
+        bboxes = [det.bbox_xyxy_norm for _, det in dets_for_img]
         try:
-            segment(img_arr, bboxes)
+            masks = segment(img_arr, bboxes)
+            for (idx, _), mask in zip(dets_for_img, masks):
+                masks_by_detection_idx[idx] = mask
         except Exception:
             pass  # non-critical
 
     # 4. CLIP reranking via FAISS
+    reranked_scores: dict[int, float] = {}
     try:
         index, embeddings, metadata = build_index(detections, images)
         reranked = query_index(index, embeddings, metadata, request.target_phrase, top_k=request.max_candidates)
+        for item in reranked:
+            reranked_scores[item.detection_idx] = item.similarity
     except Exception as exc:
         logger.warning("CLIP reranking failed, using raw detections: %s", exc)
         reranked = None
 
-    # 5. Build candidates with optional back-projection
-    candidates: list[OpenVocabCandidateDTO] = []
+    # 5. Fuse detections into stable 3D candidates, inspired by Open3DIS-style multi-view lifting.
+    fused_candidates = fuse_grounded_detections(
+        detections=detections,
+        masks_by_detection_idx=masks_by_detection_idx,
+        reranked_scores=reranked_scores,
+        room=room,
+        images=images,
+        max_candidates=request.max_candidates,
+    )
+    if fused_candidates:
+        return fused_candidates
 
+    # 6. Fallback to per-frame raw candidates if fused grounding cannot be built.
+    candidates: list[OpenVocabCandidateDTO] = []
     if reranked:
         for rr in reranked:
             det = detections[rr.detection_idx]
@@ -287,14 +304,14 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
             candidates.append(
                 OpenVocabCandidateDTO(
                     id=str(uuid4()),
-                    confidence=min(max(rr.similarity, 0.0), 1.0),
-                    bbox_xyxy_norm=rr.bbox_xyxy_norm,
-                    mask_ref=None,
-                    frame_id=Path(rr.image_path).name,
-                    world_transform16=world_t16,
-                    evidence=["backendOpenVocab", "groundingDINO", "clipReranked"],
-                    explanation=f"Detected '{rr.label}' with CLIP similarity {rr.similarity:.2f}.",
-                )
+                        confidence=min(max(rr.similarity, 0.0), 1.0),
+                        bbox_xyxy_norm=rr.bbox_xyxy_norm,
+                        mask_ref=None,
+                        frame_id=Path(rr.image_path).name,
+                        world_transform16=world_t16,
+                        evidence=["backendOpenVocab", "groundingDINO", "clipReranked", "singleViewFallback"],
+                        explanation=f"Detected '{rr.label}' with CLIP similarity {rr.similarity:.2f}.",
+                    )
             )
     else:
         for det in detections[: request.max_candidates]:
@@ -302,14 +319,14 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
             candidates.append(
                 OpenVocabCandidateDTO(
                     id=str(uuid4()),
-                    confidence=min(max(det.confidence, 0.0), 1.0),
-                    bbox_xyxy_norm=det.bbox_xyxy_norm,
-                    mask_ref=None,
-                    frame_id=Path(det.image_path).name,
-                    world_transform16=world_t16,
-                    evidence=["backendOpenVocab", "groundingDINO"],
-                    explanation=f"Detected '{det.label}' with confidence {det.confidence:.2f}.",
-                )
+                        confidence=min(max(det.confidence, 0.0), 1.0),
+                        bbox_xyxy_norm=det.bbox_xyxy_norm,
+                        mask_ref=None,
+                        frame_id=Path(det.image_path).name,
+                        world_transform16=world_t16,
+                        evidence=["backendOpenVocab", "groundingDINO", "singleViewFallback"],
+                        explanation=f"Detected '{det.label}' with confidence {det.confidence:.2f}.",
+                    )
             )
 
     return candidates
