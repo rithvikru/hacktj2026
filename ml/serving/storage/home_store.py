@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from serving.storage.room_store import RoomState, RoomStore
+from serving.storage.wearable_store import WearableStore
+from serving.topology.builder import build_topology_graph, route_between_places
 
 @dataclass
 class ItemMemoryState:
@@ -15,6 +17,7 @@ class ItemMemoryState:
     confidence: float
     observed_at: str
     world_transform16: list[float] | None = None
+    place_id: str | None = None
     evidence: list[str] = field(default_factory=list)
 
     @property
@@ -45,6 +48,7 @@ class HomeState:
     name: str
     room_ids: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+    topology_graph: dict = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
@@ -80,6 +84,21 @@ class HomeStore:
     def rebuild_map(self, home_id: str) -> dict:
         home = self._require_home(home_id)
         rooms = self._ordered_rooms(home)
+        wearable_sessions = WearableStore().list_sessions(home_id=home_id)
+        room_aliases = {_normalize(room.name): room.room_id for room in rooms}
+        if wearable_sessions:
+            topology_graph = build_topology_graph(wearable_sessions, room_aliases=room_aliases)
+            home.topology_graph = topology_graph
+            home.updated_at = topology_graph["updatedAt"]
+            return {
+                "homeId": home.home_id,
+                "name": home.name,
+                "nodes": topology_graph["nodes"],
+                "edges": topology_graph["edges"],
+                "segments": topology_graph["segments"],
+                "updatedAt": home.updated_at,
+            }
+
         portals = []
         for idx in range(max(len(rooms) - 1, 0)):
             current = rooms[idx]
@@ -118,9 +137,19 @@ class HomeStore:
                 current = best_by_label.get(memory.label.lower())
                 if current is None or memory.recency_seconds < current.recency_seconds:
                     best_by_label[memory.label.lower()] = memory
+        for memory in self._memories_from_wearable_sessions(home):
+            current = best_by_label.get(memory.label.lower())
+            if current is None or memory.recency_seconds < current.recency_seconds:
+                best_by_label[memory.label.lower()] = memory
         return sorted(best_by_label.values(), key=lambda memory: (memory.recency_seconds, -memory.confidence))
 
-    def search(self, home_id: str, query_text: str, current_room_id: str | None = None) -> dict:
+    def search(
+        self,
+        home_id: str,
+        query_text: str,
+        current_room_id: str | None = None,
+        current_place_id: str | None = None,
+    ) -> dict:
         normalized = _normalize(query_text)
         memories = self.list_memories(home_id)
         matches = [
@@ -130,7 +159,13 @@ class HomeStore:
         ]
         results = []
         for memory in matches:
-            route = self.route(home_id, memory.room_id, current_room_id=current_room_id)
+            route = self.route(
+                home_id,
+                target_room_id=memory.room_id if memory.place_id is None else None,
+                current_room_id=current_room_id,
+                target_place_id=memory.place_id,
+                current_place_id=current_place_id or (_normalize(current_room_id) if current_room_id else None),
+            )
             route_hint = route["summary"] if route["summary"] else None
             results.append(
                 {
@@ -142,6 +177,7 @@ class HomeStore:
                     "worldTransform16": memory.world_transform16,
                     "roomId": memory.room_id,
                     "roomName": memory.room_name,
+                    "placeId": memory.place_id,
                     "recencySeconds": memory.recency_seconds,
                     "memoryFreshness": memory.memory_freshness,
                     "routeHint": route_hint,
@@ -162,8 +198,38 @@ class HomeStore:
             "explanation": explanation,
         }
 
-    def route(self, home_id: str, target_room_id: str, current_room_id: str | None = None) -> dict:
+    def route(
+        self,
+        home_id: str,
+        target_room_id: str | None = None,
+        current_room_id: str | None = None,
+        target_place_id: str | None = None,
+        current_place_id: str | None = None,
+    ) -> dict:
         home = self._require_home(home_id)
+        if home.topology_graph:
+            resolved_target_place = target_place_id or self._topology_place_for_room(home.topology_graph, target_room_id)
+            resolved_current_place = current_place_id or self._topology_place_for_room(home.topology_graph, current_room_id)
+            if resolved_target_place:
+                start_place = resolved_current_place or self._default_topology_start(home.topology_graph)
+                if start_place:
+                    path = route_between_places(home.topology_graph, start_place, resolved_target_place)
+                    if path:
+                        names = {
+                            node["id"]: node.get("displayName", node["id"])
+                            for node in home.topology_graph.get("nodes", [])
+                        }
+                        return {
+                            "homeId": home.home_id,
+                            "targetPlaceId": resolved_target_place,
+                            "currentPlaceId": start_place,
+                            "placeSequence": [
+                                {"placeId": place_id, "name": names.get(place_id, place_id)}
+                                for place_id in path
+                            ],
+                            "summary": "Go through " + " -> ".join(names.get(place_id, place_id) for place_id in path),
+                        }
+
         rooms = self._ordered_rooms(home)
         if not rooms:
             return {"roomSequence": [], "summary": ""}
@@ -244,10 +310,56 @@ class HomeStore:
                     confidence=float(observation.get("confidence", 0.0)),
                     observed_at=observed_at,
                     world_transform16=observation.get("worldTransform16") or observation.get("world_transform16"),
+                    place_id=None,
                     evidence=["home_memory", f"room:{room.name.lower().replace(' ', '_')}"],
                 )
             )
         return memories
+
+    def _memories_from_wearable_sessions(self, home: HomeState) -> list[ItemMemoryState]:
+        memories: list[ItemMemoryState] = []
+        for session in WearableStore().list_sessions(home.home_id):
+            for frame in session.frame_events:
+                place_id = _normalize(frame.place_hint or "") or None
+                place_name = frame.place_hint or "Unknown Place"
+                room_id = self._topology_room_for_place(home.topology_graph, place_id) or (place_id or "wearable")
+                for index, observed in enumerate(frame.observed_objects):
+                    memories.append(
+                        ItemMemoryState(
+                            id=f"{session.session_id}-{frame.frame_id}-{index}",
+                            label=observed.label,
+                            room_id=room_id,
+                            room_name=place_name,
+                            confidence=observed.confidence,
+                            observed_at=frame.timestamp,
+                            world_transform16=None,
+                            place_id=place_id,
+                            evidence=["wearable_stream", session.source, f"session:{session.session_id}"],
+                        )
+                    )
+        return memories
+
+    def _default_topology_start(self, graph: dict) -> str | None:
+        nodes = graph.get("nodes", [])
+        if not nodes:
+            return None
+        return nodes[0]["id"]
+
+    def _topology_place_for_room(self, graph: dict, room_id: str | None) -> str | None:
+        if room_id is None:
+            return None
+        for node in graph.get("nodes", []):
+            if node.get("roomId") == room_id:
+                return node["id"]
+        return None
+
+    def _topology_room_for_place(self, graph: dict, place_id: str | None) -> str | None:
+        if place_id is None:
+            return None
+        for node in graph.get("nodes", []):
+            if node["id"] == place_id:
+                return node.get("roomId")
+        return None
 
     @classmethod
     def reset(cls) -> None:

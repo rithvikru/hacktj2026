@@ -134,6 +134,7 @@ struct SearchPlanner {
                 timestamp: Date(),
                 confidenceState: .notFound,
                 roomName: nil,
+                placeID: nil,
                 recencySeconds: nil,
                 memoryFreshness: nil,
                 routeHint: nil
@@ -220,6 +221,7 @@ struct SearchPlanner {
                 timestamp: Date(),
                 confidenceState: .notFound,
                 roomName: nil,
+                placeID: nil,
                 recencySeconds: nil,
                 memoryFreshness: nil,
                 routeHint: nil
@@ -247,6 +249,7 @@ struct SearchPlanner {
             timestamp: Date(),
             confidenceState: top.confidenceState,
             roomName: top.roomName,
+            placeID: top.placeID,
             recencySeconds: top.recencySeconds,
             memoryFreshness: top.memoryFreshness,
             routeHint: top.routeHint

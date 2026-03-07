@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import tempfile
 import zipfile
@@ -28,6 +29,7 @@ from hacktj2026_ml.toolkit import DefaultQueryToolkit
 from serving.scene_graph.builder import build_scene_graph
 from serving.storage.home_store import HomeStore
 from serving.storage.room_store import RoomStore
+from serving.storage.wearable_store import ObservedObjectEvent, WearableFrameEvent, WearableStore
 
 class RoomCreateRequest(APIDTOModel):
     name: str
@@ -61,6 +63,31 @@ class HomeAttachRoomRequest(APIDTOModel):
 class HomeSearchRequest(APIDTOModel):
     query_text: str
     current_room_id: str | None = None
+    current_place_id: str | None = None
+
+class WearableSessionCreateRequest(APIDTOModel):
+    home_id: str
+    device_name: str
+    source: str = "rayban_meta"
+    sampling_fps: float = 1.0
+
+class WearableObservedObjectRequest(APIDTOModel):
+    label: str
+    confidence: float
+
+class WearableFrameEventRequest(APIDTOModel):
+    frame_id: str
+    timestamp: str
+    sample_reason: str = "interval"
+    place_hint: str | None = None
+    observed_objects: list[WearableObservedObjectRequest] = Field(default_factory=list)
+    image_jpeg_base64: str | None = None
+    image_width: int | None = None
+    image_height: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+class WearableFrameBatchRequest(APIDTOModel):
+    events: list[WearableFrameEventRequest] = Field(default_factory=list)
 
 class SceneGraphNodeDTO(APIDTOModel):
     id: str
@@ -138,6 +165,81 @@ def create_home(request: HomeCreateRequest):
     home = store.create(request.name, metadata=request.metadata)
     return {"homeID": home.home_id, "name": home.name, "status": "created"}
 
+@app.post("/wearables/sessions")
+def create_wearable_session(request: WearableSessionCreateRequest):
+    if not HomeStore().get(request.home_id):
+        raise HTTPException(404, "Home not found")
+    session_id = str(uuid4())
+    session = WearableStore().create_session(
+        session_id=session_id,
+        home_id=request.home_id,
+        device_name=request.device_name,
+        source=request.source,
+        sampling_fps=request.sampling_fps,
+    )
+    return {
+        "sessionID": session.session_id,
+        "homeID": session.home_id,
+        "deviceName": session.device_name,
+        "status": session.status,
+    }
+
+@app.get("/wearables/sessions/{session_id}")
+def get_wearable_session(session_id: str):
+    session = WearableStore().get(session_id)
+    if session is None:
+        raise HTTPException(404, "Wearable session not found")
+    return {
+        "sessionID": session.session_id,
+        "homeID": session.home_id,
+        "deviceName": session.device_name,
+        "source": session.source,
+        "status": session.status,
+        "samplingFps": session.sampling_fps,
+        "frameCount": len(session.frame_events),
+        "updatedAt": session.updated_at,
+    }
+
+@app.post("/wearables/sessions/{session_id}/frames")
+def ingest_wearable_frames(session_id: str, request: WearableFrameBatchRequest):
+    session = WearableStore().get(session_id)
+    if session is None:
+        raise HTTPException(404, "Wearable session not found")
+
+    frames_dir = Path("data/wearables") / session_id / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    parsed_events: list[WearableFrameEvent] = []
+    for event in request.events:
+        image_path = None
+        if event.image_jpeg_base64:
+            image_bytes = base64.b64decode(event.image_jpeg_base64)
+            image_path = frames_dir / f"{event.frame_id}.jpg"
+            image_path.write_bytes(image_bytes)
+
+        parsed_events.append(
+            WearableFrameEvent(
+                frame_id=event.frame_id,
+                timestamp=event.timestamp,
+                sample_reason=event.sample_reason,
+                place_hint=event.place_hint,
+                image_path=str(image_path) if image_path else None,
+                image_width=event.image_width,
+                image_height=event.image_height,
+                observed_objects=[
+                    ObservedObjectEvent(label=obj.label, confidence=obj.confidence)
+                    for obj in event.observed_objects
+                ],
+                metadata=event.metadata,
+            )
+        )
+
+    updated = WearableStore().append_frames(session_id, parsed_events)
+    return {
+        "sessionID": session_id,
+        "status": updated.status if updated else "missing",
+        "accepted": len(parsed_events),
+    }
+
 @app.post("/homes/{home_id}/rooms")
 def attach_room_to_home(home_id: str, request: HomeAttachRoomRequest):
     homes = HomeStore()
@@ -157,19 +259,54 @@ def rebuild_home_map(home_id: str):
     except KeyError:
         raise HTTPException(404, "Home not found") from None
 
+@app.post("/homes/{home_id}/topology/rebuild")
+def rebuild_home_topology(home_id: str):
+    store = HomeStore()
+    try:
+        return store.rebuild_map(home_id)
+    except KeyError:
+        raise HTTPException(404, "Home not found") from None
+
+@app.get("/homes/{home_id}/topology")
+def get_home_topology(home_id: str):
+    store = HomeStore()
+    home = store.get(home_id)
+    if home is None:
+        raise HTTPException(404, "Home not found")
+    if not home.topology_graph:
+        return store.rebuild_map(home_id)
+    return {"homeId": home.home_id, **home.topology_graph}
+
 @app.post("/homes/{home_id}/search")
 def search_home(home_id: str, request: HomeSearchRequest):
     store = HomeStore()
     try:
-        return store.search(home_id, request.query_text, current_room_id=request.current_room_id)
+        return store.search(
+            home_id,
+            request.query_text,
+            current_room_id=request.current_room_id,
+            current_place_id=request.current_place_id,
+        )
     except KeyError:
         raise HTTPException(404, "Home not found") from None
 
 @app.get("/homes/{home_id}/route")
-def route_home(home_id: str, target_room_id: str, current_room_id: str | None = None):
+def route_home(
+    home_id: str,
+    target_room_id: str | None = None,
+    current_room_id: str | None = None,
+    target_place_id: str | None = None,
+    current_place_id: str | None = None,
+):
     store = HomeStore()
     try:
-        return store.route(home_id, target_room_id=target_room_id, current_room_id=current_room_id)
+        return store.route(
+            home_id,
+            target_room_id=target_room_id,
+            current_room_id=current_room_id,
+            target_place_id=target_place_id,
+            current_place_id=current_place_id,
+        )
     except KeyError:
         raise HTTPException(404, "Home not found") from None
 
@@ -185,6 +322,7 @@ def list_home_memories(home_id: str):
                     "label": memory.label,
                     "roomId": memory.room_id,
                     "roomName": memory.room_name,
+                    "placeId": memory.place_id,
                     "confidence": memory.confidence,
                     "confidenceState": memory.confidence_state,
                     "recencySeconds": memory.recency_seconds,

@@ -16,6 +16,53 @@ final class BackendClient {
         self.session = URLSession(configuration: config)
     }
 
+    func createWearableSession(
+        homeID: String,
+        deviceName: String,
+        source: String,
+        samplingFPS: Double
+    ) async throws -> String {
+        let url = baseURL.appendingPathComponent("wearables/sessions")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "home_id": homeID,
+                "device_name": deviceName,
+                "source": source,
+                "sampling_fps": samplingFPS,
+            ]
+        )
+
+        let (data, _) = try await session.data(for: request)
+        let response = try decoder.decode(CreateWearableSessionResponse.self, from: data)
+        return response.sessionID
+    }
+
+    func uploadWearableFrames(sessionID: String, frames: [WearableFrameUpload]) async throws {
+        let url = baseURL.appendingPathComponent("wearables/sessions/\(sessionID)/frames")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(WearableFrameBatchRequest(events: frames))
+        let (_, _) = try await session.data(for: request)
+    }
+
+    func rebuildTopology(homeID: String) async throws -> HomeTopologyResponse {
+        let url = baseURL.appendingPathComponent("homes/\(homeID)/topology/rebuild")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let (data, _) = try await session.data(for: request)
+        return try decoder.decode(HomeTopologyResponse.self, from: data)
+    }
+
+    func fetchTopology(homeID: String) async throws -> HomeTopologyResponse {
+        let url = baseURL.appendingPathComponent("homes/\(homeID)/topology")
+        let (data, _) = try await session.data(from: url)
+        return try decoder.decode(HomeTopologyResponse.self, from: data)
+    }
+
     func createHome(name: String, metadata: [String: String] = [:]) async throws -> String {
         let url = baseURL.appendingPathComponent("homes")
         var request = URLRequest(url: url)
@@ -94,6 +141,7 @@ final class BackendClient {
                 worldTransform: candidate.worldTransform,
                 roomID: nil,
                 roomName: nil,
+                placeID: nil,
                 recencySeconds: nil,
                 memoryFreshness: nil,
                 routeHint: nil,
@@ -114,7 +162,12 @@ final class BackendClient {
         return try decoder.decode(BackendQueryResponse.self, from: data)
     }
 
-    func searchHome(homeID: String, query: String, currentRoomID: UUID? = nil) async throws -> BackendQueryResponse {
+    func searchHome(
+        homeID: String,
+        query: String,
+        currentRoomID: UUID? = nil,
+        currentPlaceID: String? = nil
+    ) async throws -> BackendQueryResponse {
         let url = baseURL.appendingPathComponent("homes/\(homeID)/search")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -122,6 +175,9 @@ final class BackendClient {
         var payload: [String: Any] = ["query_text": query]
         if let currentRoomID {
             payload["current_room_id"] = currentRoomID.uuidString
+        }
+        if let currentPlaceID {
+            payload["current_place_id"] = currentPlaceID
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -180,6 +236,23 @@ private struct CreateHomeResponse: Decodable {
     }
 }
 
+private struct CreateWearableSessionResponse: Decodable {
+    let sessionID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID
+        case session_id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID =
+            try container.decodeIfPresent(String.self, forKey: .sessionID) ??
+            (try container.decodeIfPresent(String.self, forKey: .session_id)) ??
+            ""
+    }
+}
+
 private struct ReconstructionStatusResponse: Decodable {
     let status: String
 }
@@ -193,6 +266,7 @@ struct BackendSearchResult: Decodable, Identifiable {
     let worldTransform: [Float]?
     let roomID: String?
     let roomName: String?
+    let placeID: String?
     let recencySeconds: Double?
     let memoryFreshness: Double?
     let routeHint: String?
@@ -208,6 +282,7 @@ struct BackendSearchResult: Decodable, Identifiable {
         worldTransform: [Float]?,
         roomID: String?,
         roomName: String?,
+        placeID: String?,
         recencySeconds: Double?,
         memoryFreshness: Double?,
         routeHint: String?,
@@ -222,6 +297,7 @@ struct BackendSearchResult: Decodable, Identifiable {
         self.worldTransform = worldTransform
         self.roomID = roomID
         self.roomName = roomName
+        self.placeID = placeID
         self.recencySeconds = recencySeconds
         self.memoryFreshness = memoryFreshness
         self.routeHint = routeHint
@@ -246,6 +322,8 @@ struct BackendSearchResult: Decodable, Identifiable {
         case room_id
         case roomName
         case room_name
+        case placeID
+        case place_id
         case recencySeconds
         case recency_seconds
         case memoryFreshness
@@ -283,6 +361,9 @@ struct BackendSearchResult: Decodable, Identifiable {
         roomName =
             try container.decodeIfPresent(String.self, forKey: .roomName) ??
             (try container.decodeIfPresent(String.self, forKey: .room_name))
+        placeID =
+            try container.decodeIfPresent(String.self, forKey: .placeID) ??
+            (try container.decodeIfPresent(String.self, forKey: .place_id))
         recencySeconds =
             try container.decodeIfPresent(Double.self, forKey: .recencySeconds) ??
             (try container.decodeIfPresent(Double.self, forKey: .recency_seconds))
@@ -322,6 +403,100 @@ struct BackendQueryResponse: Decodable {
         explanation =
             try container.decodeIfPresent(String.self, forKey: .explanation) ??
             (status == "accepted" ? "Backend accepted the query for processing." : "")
+    }
+}
+
+private struct WearableFrameBatchRequest: Encodable {
+    let events: [WearableFrameUpload]
+}
+
+struct HomeTopologyNode: Decodable, Identifiable {
+    let id: String
+    let displayName: String
+    let frameCount: Int
+    let roomID: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case display_name
+        case frameCount
+        case frame_count
+        case roomID
+        case room_id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        displayName =
+            try container.decodeIfPresent(String.self, forKey: .displayName) ??
+            (try container.decodeIfPresent(String.self, forKey: .display_name)) ??
+            id
+        frameCount =
+            try container.decodeIfPresent(Int.self, forKey: .frameCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .frame_count)) ??
+            0
+        roomID =
+            try container.decodeIfPresent(String.self, forKey: .roomID) ??
+            (try container.decodeIfPresent(String.self, forKey: .room_id))
+    }
+}
+
+struct HomeTopologyEdge: Decodable, Identifiable {
+    let id: String
+    let sourcePlaceID: String
+    let targetPlaceID: String
+    let transitionCount: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case sourcePlaceID
+        case source_place_id
+        case targetPlaceID
+        case target_place_id
+        case transitionCount
+        case transition_count
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        sourcePlaceID =
+            try container.decodeIfPresent(String.self, forKey: .sourcePlaceID) ??
+            (try container.decodeIfPresent(String.self, forKey: .source_place_id)) ??
+            ""
+        targetPlaceID =
+            try container.decodeIfPresent(String.self, forKey: .targetPlaceID) ??
+            (try container.decodeIfPresent(String.self, forKey: .target_place_id)) ??
+            ""
+        transitionCount =
+            try container.decodeIfPresent(Int.self, forKey: .transitionCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .transition_count)) ??
+            0
+    }
+}
+
+struct HomeTopologyResponse: Decodable {
+    let homeID: String
+    let nodes: [HomeTopologyNode]
+    let edges: [HomeTopologyEdge]
+
+    private enum CodingKeys: String, CodingKey {
+        case homeID
+        case home_id
+        case nodes
+        case edges
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        homeID =
+            try container.decodeIfPresent(String.self, forKey: .homeID) ??
+            (try container.decodeIfPresent(String.self, forKey: .home_id)) ??
+            ""
+        nodes = try container.decodeIfPresent([HomeTopologyNode].self, forKey: .nodes) ?? []
+        edges = try container.decodeIfPresent([HomeTopologyEdge].self, forKey: .edges) ?? []
     }
 }
 

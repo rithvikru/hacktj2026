@@ -33,6 +33,7 @@ struct LocalObservationExecutor {
             timestamp: topMatch.observedAt,
             confidenceState: confidenceState(for: topMatch),
             roomName: topMatch.room?.name,
+            placeID: nil,
             recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
             memoryFreshness: memoryFreshness(for: topMatch.observedAt),
             routeHint: topMatch.room?.name.map { "Head to \($0)." }
@@ -71,6 +72,7 @@ struct LocalObservationExecutor {
             timestamp: matches.first?.observedAt ?? Date(),
             confidenceState: .liveSeen,
             roomName: matches.first?.room?.name,
+            placeID: nil,
             recencySeconds: matches.first.map { Date().timeIntervalSince($0.observedAt) },
             memoryFreshness: matches.first.map { memoryFreshness(for: $0.observedAt) },
             routeHint: matches.first?.room?.name.map { "Start in \($0)." }
@@ -121,6 +123,7 @@ struct LocalObservationExecutor {
             timestamp: max(subjectObservation.observedAt, referenceObservation.observedAt),
             confidenceState: confidenceState(for: subjectObservation),
             roomName: subjectObservation.room?.name,
+            placeID: nil,
             recencySeconds: Date().timeIntervalSince(subjectObservation.observedAt),
             memoryFreshness: memoryFreshness(for: subjectObservation.observedAt),
             routeHint: subjectObservation.room?.name.map { "Head to \($0)." }
@@ -145,6 +148,7 @@ struct LocalObservationExecutor {
                 timestamp: topMatch.observedAt,
                 confidenceState: confidenceState(for: topMatch),
                 roomName: topMatch.room?.name,
+                placeID: nil,
                 recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
                 memoryFreshness: memoryFreshness(for: topMatch.observedAt),
                 routeHint: topMatch.room?.name.map { "Head to \($0)." }
@@ -262,6 +266,7 @@ struct LocalObservationExecutor {
             timestamp: Date(),
             confidenceState: .notFound,
             roomName: nil,
+            placeID: nil,
             recencySeconds: nil,
             memoryFreshness: nil,
             routeHint: nil

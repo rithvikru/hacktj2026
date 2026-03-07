@@ -11,6 +11,7 @@ struct SearchResult: Identifiable {
     let timestamp: Date
     let confidenceState: SearchConfidenceState
     let roomName: String?
+    let placeID: String?
     let recencySeconds: Double?
     let memoryFreshness: Double?
     let routeHint: String?
