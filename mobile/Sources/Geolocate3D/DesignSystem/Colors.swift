@@ -16,3 +16,17 @@ extension Color {
     static let glassEdge        = Color.white.opacity(0.12)
     static let dimLabel         = Color.white.opacity(0.5)
 }
+
+extension ShapeStyle where Self == Color {
+    static var spatialCyan: Color { .spatialCyan }
+    static var signalMagenta: Color { .signalMagenta }
+    static var confirmGreen: Color { .confirmGreen }
+    static var warningAmber: Color { .warningAmber }
+    static var inferenceViolet: Color { .inferenceViolet }
+    static var spaceBlack: Color { .spaceBlack }
+    static var obsidian: Color { .obsidian }
+    static var voidGray: Color { .voidGray }
+    static var glassWhite: Color { .glassWhite }
+    static var glassEdge: Color { .glassEdge }
+    static var dimLabel: Color { .dimLabel }
+}

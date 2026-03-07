@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "PlannerAmbiguity": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguityType": {
+          "enum": [
+            "target",
+            "attribute",
+            "relation",
+            "reference"
+          ],
+          "title": "Ambiguitytype",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explanation"
+        }
+      },
+      "required": [
+        "ambiguityType",
+        "candidates"
+      ],
+      "title": "PlannerAmbiguity",
+      "type": "object"
+    },
+    "PlannerRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation",
+        "reference"
+      ],
+      "title": "PlannerRelation",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ambiguities": {
+      "items": {
+        "$ref": "#/$defs/PlannerAmbiguity"
+      },
+      "title": "Ambiguities",
+      "type": "array"
+    },
+    "attributes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Attributes",
+      "type": "array"
+    },
+    "canUseLocalAccelerator": {
+      "title": "Canuselocalaccelerator",
+      "type": "boolean"
+    },
+    "canonicalQueryLabel": {
+      "title": "Canonicalquerylabel",
+      "type": "string"
+    },
+    "executorOrder": {
+      "items": {
+        "enum": [
+          "signal",
+          "backend_open_vocab",
+          "local_observation",
+          "scene_graph",
+          "hidden_inference"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Executororder",
+      "type": "array"
+    },
+    "intent": {
+      "enum": [
+        "findObject",
+        "findLikelyObjectLocation",
+        "countObjects",
+        "listObjectsInSection",
+        "showNearest",
+        "showSupportingSurface",
+        "showContainedItems",
+        "explainWhy"
+      ],
+      "title": "Intent",
+      "type": "string"
+    },
+    "normalizedQuery": {
+      "title": "Normalizedquery",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "queryId": {
+      "title": "Queryid",
+      "type": "string"
+    },
+    "queryText": {
+      "title": "Querytext",
+      "type": "string"
+    },
+    "relations": {
+      "items": {
+        "$ref": "#/$defs/PlannerRelation"
+      },
+      "title": "Relations",
+      "type": "array"
+    },
+    "requiresBackend": {
+      "title": "Requiresbackend",
+      "type": "boolean"
+    },
+    "searchClass": {
+      "enum": [
+        "planner_led_open_vocab_visible_search",
+        "local_accelerated_visible_search",
+        "last_seen_retrieval",
+        "signal_based_localization",
+        "hidden_object_likelihood_inference"
+      ],
+      "title": "Searchclass",
+      "type": "string"
+    },
+    "shouldComputeHiddenFallback": {
+      "title": "Shouldcomputehiddenfallback",
+      "type": "boolean"
+    },
+    "targetPhrase": {
+      "title": "Targetphrase",
+      "type": "string"
+    }
+  },
+  "required": [
+    "queryId",
+    "queryText",
+    "normalizedQuery",
+    "intent",
+    "targetPhrase",
+    "canonicalQueryLabel",
+    "searchClass",
+    "executorOrder",
+    "requiresBackend",
+    "canUseLocalAccelerator",
+    "shouldComputeHiddenFallback"
+  ],
+  "title": "PlannerPlan",
+  "type": "object"
+}
