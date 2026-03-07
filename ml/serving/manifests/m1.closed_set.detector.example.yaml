@@ -1,0 +1,19 @@
+model_id: m1.closed_set.detector
+model_family: closed_set_detector
+version: 0.1.0
+training_data_manifest: datasets/manifests/dataset-splits.example.yaml
+eval_report_path: outputs/closed_set/eval/report.json
+input_contract:
+  image_size: 640
+  channels: 3
+output_contract:
+  result_type: detected
+  fields:
+    - label
+    - score
+    - bbox_xyxy_norm
+thresholds:
+  score_threshold: 0.25
+  nms_threshold: 0.50
+owner: ai-ml-lead
+created_at: 2026-03-07T00:00:00Z

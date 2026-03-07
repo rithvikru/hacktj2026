@@ -1,0 +1,142 @@
+version: 1
+root_dir: datasets/external/private
+global_rules:
+  split_by:
+    - room
+    - object_instance
+    - capture_session
+  never_split_by:
+    - frame
+  device_target:
+    - iPhone 15 Pro Max
+
+folder_schema:
+  visible_objects: datasets/external/private/visible-objects
+  room_sweeps: datasets/external/private/room-sweeps
+  hidden_episodes: datasets/external/private/hidden-episodes
+  cooperative_signal: datasets/external/private/cooperative-signal
+
+visible_object_collection:
+  status: required
+  rooms_min: 10
+  labels:
+    - canonical_label: airpods_case
+      images_min: 500
+      physical_instances_target: 20
+      priority: highest
+    - canonical_label: wallet
+      images_min: 500
+      physical_instances_target: 20
+      priority: highest
+    - canonical_label: keys
+      images_min: 500
+      physical_instances_target: 20
+      priority: highest
+    - canonical_label: tv_remote
+      images_min: 500
+      physical_instances_target: 20
+      priority: medium
+    - canonical_label: glasses
+      images_min: 500
+      physical_instances_target: 20
+      priority: medium
+    - canonical_label: phone
+      images_min: 500
+      physical_instances_target: 20
+      priority: medium
+    - canonical_label: charger
+      images_min: 500
+      physical_instances_target: 20
+      priority: highest
+  required_conditions:
+    - daylight
+    - warm_lamp_light
+    - dim_light
+    - mixed_light
+    - clean_scene
+    - cluttered_scene
+    - partial_occlusion
+    - scale_variation
+    - motion_blur
+  required_contexts:
+    - bed
+    - desk
+    - couch
+    - floor
+    - nightstand
+    - drawer
+    - backpack
+  hard_negatives:
+    - earbuds_without_case
+    - wallets_embedded_in_fabric_patterns
+    - metallic_remote_like_objects
+    - chargers_and_cables_near_phones
+
+room_sweep_collection:
+  status: required
+  rooms_min: 10
+  sessions_per_room_target: 3
+  required_assets:
+    - rgb_frames
+    - arkit_poses
+    - intrinsics
+    - timestamps
+    - tracking_state
+    - depth_if_available
+    - roomplan_export
+    - preview_image
+    - world_map_when_needed
+  checklist:
+    - scan full room perimeter
+    - scan support surfaces closely
+    - scan likely containers closely
+    - preserve multiple clutter states per room
+    - preserve multiple sessions per room
+
+hidden_episode_collection:
+  status: required
+  episodes_per_label_initial_target: 50
+  required_scenarios:
+    - under_blanket
+    - under_clothes_pile
+    - inside_drawer
+    - inside_backpack
+    - under_couch_cushion
+    - under_bed_edge
+    - dropped_next_to_support_furniture
+  required_episode_fields:
+    - last_visible_frame
+    - last_seen_transform16
+    - final_hidden_state
+    - true_container
+    - true_support_surface
+    - true_world_transform16_if_known
+    - candidate_regions
+    - ground_truth_rank_target
+
+cooperative_signal_collection:
+  status: optional
+  enable_if:
+    - nearby_interaction_second_iphone_path
+    - custom_uwb_or_ble_tag_path
+  required_assets:
+    - paired_signal_samples
+    - room_alignment_reference
+    - ground_truth_target_transform
+
+first_week_plan:
+  day_1:
+    - create folder tree
+    - assign owners
+    - prepare capture objects and rooms
+  day_2:
+    - visible_object_capture_session_1
+    - room_sweep_session_1
+  day_3:
+    - hidden_episode_session_1
+    - ingest_records_into_datasets_records
+  day_4_to_7:
+    - continue_capture
+    - annotate_first_batch
+    - validate_dataset_records
+    - train_first_real_m1_baseline

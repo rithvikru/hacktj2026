@@ -1,0 +1,113 @@
+version: 1
+labels:
+  - canonical_label: airpods_case
+    display_name: AirPods case
+    synonyms:
+      - airpods
+      - airpods case
+      - earbuds case
+    category: small_personal_item
+    size_class: small
+    support_priors:
+      - bed
+      - desk
+      - nightstand
+      - couch
+    container_priors:
+      - backpack
+      - drawer
+      - pocket
+  - canonical_label: wallet
+    display_name: Wallet
+    synonyms:
+      - wallet
+      - billfold
+    category: small_personal_item
+    size_class: small
+    support_priors:
+      - bed
+      - couch
+      - desk
+      - table
+    container_priors:
+      - backpack
+      - drawer
+      - jacket
+  - canonical_label: keys
+    display_name: Keys
+    synonyms:
+      - keys
+      - keychain
+    category: small_personal_item
+    size_class: small
+    support_priors:
+      - entry_table
+      - desk
+      - counter
+    container_priors:
+      - pocket
+      - backpack
+      - drawer
+  - canonical_label: tv_remote
+    display_name: TV remote
+    synonyms:
+      - remote
+      - tv remote
+    category: remote_control
+    size_class: medium
+    support_priors:
+      - couch
+      - coffee_table
+      - tv_stand
+      - bed
+    container_priors:
+      - couch_cushion
+      - blanket
+  - canonical_label: glasses
+    display_name: Glasses
+    synonyms:
+      - glasses
+      - eyeglasses
+      - specs
+    category: wearable
+    size_class: small
+    support_priors:
+      - desk
+      - nightstand
+      - sink
+    container_priors:
+      - case
+      - backpack
+      - drawer
+  - canonical_label: phone
+    display_name: Phone
+    synonyms:
+      - phone
+      - iphone
+      - smartphone
+    category: electronics
+    size_class: medium
+    support_priors:
+      - bed
+      - desk
+      - couch
+      - counter
+    container_priors:
+      - pocket
+      - backpack
+      - drawer
+  - canonical_label: charger
+    display_name: Charger
+    synonyms:
+      - charger
+      - charging brick
+      - cable
+    category: electronics_accessory
+    size_class: medium
+    support_priors:
+      - desk
+      - outlet_area
+      - nightstand
+    container_priors:
+      - drawer
+      - backpack

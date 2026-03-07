@@ -4,6 +4,10 @@ Status: source of truth for full-system implementation
 Version: `v2.0`  
 Last updated: `2026-03-07`
 
+Related implementation specs:
+
+- `docs/ai-ml-model-spec.md`
+
 ## 1. Objective
 
 Build a native iPhone-centered spatial intelligence system that lets a user:

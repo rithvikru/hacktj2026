@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "open-vocab-result.schema.json",
+  "title": "OpenVocabResult",
+  "type": "object",
+  "required": [
+    "result_type",
+    "model_id",
+    "model_version",
+    "query_text",
+    "candidates"
+  ],
+  "properties": {
+    "result_type": {
+      "type": "string",
+      "enum": ["detected"]
+    },
+    "model_id": { "type": "string" },
+    "model_version": { "type": "string" },
+    "query_text": { "type": "string" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["score", "bbox_xyxy_norm", "frame_id"],
+        "properties": {
+          "score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "bbox_xyxy_norm": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "mask_ref": { "type": ["string", "null"] },
+          "frame_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

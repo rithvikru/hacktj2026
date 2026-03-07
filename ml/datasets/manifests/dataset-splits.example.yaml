@@ -1,0 +1,22 @@
+version: 1
+split_strategy:
+  type: grouped
+  group_keys:
+    - room_id
+    - session_id
+    - object_instance_id
+splits:
+  train:
+    room_ids:
+      - room_001
+      - room_002
+      - room_003
+  val:
+    room_ids:
+      - room_004
+  test:
+    room_ids:
+      - room_005
+notes:
+  - Never split randomly by frame.
+  - Keep hidden-object episodes from the same session in a single split.

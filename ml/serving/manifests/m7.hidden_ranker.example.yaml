@@ -1,0 +1,18 @@
+model_id: m7.hidden_ranker
+model_family: hidden_location_ranker
+version: 0.1.0
+training_data_manifest: datasets/manifests/dataset-splits.example.yaml
+eval_report_path: outputs/hidden_inference/eval/report.json
+input_contract:
+  query_label: string
+  candidate_regions: list
+output_contract:
+  result_type: likely_hidden
+  fields:
+    - rank
+    - confidence
+    - reason_codes
+thresholds:
+  top_3_region_accuracy: 0.80
+owner: ai-ml-lead
+created_at: 2026-03-07T00:00:00Z
