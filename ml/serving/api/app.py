@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import tempfile
+import zipfile
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI
-from pydantic import Field
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
 from hacktj2026_ml.chat_service import ChatService
@@ -19,6 +25,8 @@ from hacktj2026_ml.query_contracts import (
 )
 from hacktj2026_ml.query_engine import QueryEngine, build_planner_request
 from hacktj2026_ml.toolkit import DefaultQueryToolkit
+from serving.scene_graph.builder import build_scene_graph
+from serving.storage.room_store import RoomStore
 
 class RoomCreateRequest(APIDTOModel):
     name: str
@@ -73,6 +81,14 @@ class RoomAssetsResponseDTO(APIDTOModel):
     frame_bundle_url: str | None = None
     updated_at: str
 
+class SimpleQueryBody(BaseModel):
+    query: str | None = None
+    query_text: str | None = None
+
+    @property
+    def resolved_query(self) -> str:
+        return self.query or self.query_text or ""
+
 app = FastAPI(title="hacktj2026-ml", version="0.2.0")
 engine = QueryEngine(toolkit=DefaultQueryToolkit())
 chat_service = ChatService(query_engine=engine)
@@ -81,24 +97,72 @@ chat_service = ChatService(query_engine=engine)
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
-@app.post("/rooms", response_model=RoomCreateResponse)
-def create_room(request: RoomCreateRequest) -> RoomCreateResponse:
-    return RoomCreateResponse(
-        room_id=str(uuid4()),
-        name=request.name,
-        status="created",
-    )
+@app.get("/rooms")
+def list_rooms():
+    store = RoomStore()
+    return [
+        {"roomID": r.room_id, "name": r.name, "status": r.reconstruction_status}
+        for r in store.list_all()
+    ]
 
-@app.post("/rooms/{room_id}/frame-bundles", response_model=FrameBundleAcceptedResponse)
-def upload_frame_bundle(room_id: str) -> FrameBundleAcceptedResponse:
-    return FrameBundleAcceptedResponse(
-        room_id=room_id,
-        bundle_id=str(uuid4()),
-        status="accepted",
-    )
+@app.post("/rooms")
+def create_room(request: RoomCreateRequest):
+    store = RoomStore()
+    room_id = str(uuid4())
+    store.create(room_id, request.name)
+    return {"roomID": room_id, "name": request.name, "status": "created"}
+
+@app.post("/rooms/{room_id}/frame-bundles")
+async def upload_frame_bundle(room_id: str, file: UploadFile = File(...)):
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
+
+    data_dir = Path("data/rooms") / room_id / "frames"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    content = await file.read()
+    tmp.write(content)
+    tmp.close()
+
+    with zipfile.ZipFile(tmp.name, "r") as zf:
+        zf.extractall(data_dir)
+    Path(tmp.name).unlink()
+
+    manifest_path = data_dir / "manifest.json"
+    frames: list[dict] = []
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        frames = manifest.get("frames", [])
+
+    room.frame_dir = data_dir
+    room.frames = frames
+
+    room.scene_graph = build_scene_graph(room)
+
+    return {
+        "roomID": room_id,
+        "bundleID": str(uuid4()),
+        "status": "accepted",
+        "frameCount": len(frames),
+    }
 
 @app.post("/rooms/{room_id}/reconstruct", response_model=JobAcceptedResponse)
-def reconstruct_room(room_id: str) -> JobAcceptedResponse:
+async def reconstruct_room_endpoint(room_id: str) -> JobAcceptedResponse:
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
+    if not room.frame_dir:
+        raise HTTPException(400, "No frames uploaded")
+
+    from serving.workers.reconstruct_room import reconstruct_room
+
+    asyncio.create_task(
+        reconstruct_room(room_id, room.frame_dir, room.frames, store)
+    )
     return JobAcceptedResponse(room_id=room_id, job_type="reconstruct", status="queued")
 
 @app.post("/rooms/{room_id}/index", response_model=JobAcceptedResponse)
@@ -109,45 +173,97 @@ def index_room(room_id: str) -> JobAcceptedResponse:
 def parse_query(request: PlannerRequest) -> PlannerPlan:
     return engine.build_plan(request)
 
-@app.post("/rooms/{room_id}/query", response_model=QueryResponseDTO)
-def query_room(room_id: str, request: QueryRequest) -> QueryResponseDTO:
+@app.post("/rooms/{room_id}/query")
+def query_room(room_id: str, request: QueryRequest) -> dict:
     planner_request = build_planner_request(room_id=room_id, request=request)
-    return engine.execute_query(planner_request=planner_request, query_request=request)
+    response = engine.execute_query(planner_request=planner_request, query_request=request)
+
+    serialized = response.model_dump(by_alias=True)
+    return {
+        "resultType": serialized.get("resultType", "not_found"),
+        "results": [
+            {
+                "id": r.get("id", ""),
+                "label": r.get("label", ""),
+                "confidence": r.get("confidence", 0.0),
+                "worldTransform": r.get("worldTransform16"),
+                "evidence": r.get("evidence", []),
+                "explanation": r.get("explanation", ""),
+            }
+            for r in serialized.get("results", [])
+        ],
+        "explanation": serialized.get("explanation", ""),
+    }
 
 @app.post("/rooms/{room_id}/chat", response_model=ChatResponseDTO)
 def chat_room(room_id: str, request: ChatRequestDTO) -> ChatResponseDTO:
     adjusted_request = request.model_copy(update={"room_id": room_id})
     return chat_service.chat(adjusted_request)
 
-@app.post("/rooms/{room_id}/open-vocab-search", response_model=OpenVocabSearchResponseDTO)
-def open_vocab_search(room_id: str, request: OpenVocabSearchRequest) -> OpenVocabSearchResponseDTO:
+@app.post("/rooms/{room_id}/open-vocab-search")
+def open_vocab_search(room_id: str, request: OpenVocabSearchRequest) -> list[dict]:
     adjusted_request = request.model_copy(update={"room_id": room_id})
     toolkit = engine.toolkit or DefaultQueryToolkit()
-    return toolkit.query_open_vocab(adjusted_request)
+    response = toolkit.query_open_vocab(adjusted_request)
 
-@app.get("/rooms/{room_id}/scene-graph", response_model=SceneGraphResponseDTO)
-def scene_graph(room_id: str) -> SceneGraphResponseDTO:
-    return SceneGraphResponseDTO(room_id=room_id)
+    return [
+        {
+            "id": c.id,
+            "label": request.target_phrase,
+            "confidence": c.confidence,
+            "worldTransform": c.world_transform16,
+            "evidence": c.evidence,
+            "explanation": c.explanation,
+        }
+        for c in response.candidates
+    ]
+
+@app.get("/rooms/{room_id}/scene-graph")
+def scene_graph(room_id: str):
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room or not room.scene_graph:
+        return {"roomId": room_id, "sceneGraphVersion": 0, "nodes": [], "edges": []}
+    return room.scene_graph
 
 @app.get("/rooms/{room_id}/hypotheses")
-def hypotheses(room_id: str) -> dict[str, Any]:
-    return {
-        "roomId": room_id,
-        "queryLabel": "wallet",
-        "resultType": "likelyHidden",
-        "modelID": "m7.hidden_ranker",
-        "modelVersion": "0.1.0",
-        "hypotheses": [],
-    }
+def hypotheses(room_id: str, queryLabel: str | None = None):
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        return {"roomId": room_id, "hypotheses": []}
 
-@app.get("/rooms/{room_id}/assets", response_model=RoomAssetsResponseDTO)
-def assets(room_id: str) -> RoomAssetsResponseDTO:
-    return RoomAssetsResponseDTO(
-        room_id=room_id,
-        reconstruction_status="processing",
-        room_usdz_url=None,
-        dense_asset_url=None,
-        scene_graph_version=0,
-        frame_bundle_url=None,
-        updated_at="2026-03-07T00:00:00Z",
-    )
+    if queryLabel and room.scene_graph:
+        try:
+            from hidden_inference.rules.rank import rank_for_query
+
+            result = rank_for_query(room.scene_graph, room.observations, queryLabel)
+            return {
+                "roomId": room_id,
+                "queryLabel": queryLabel,
+                "resultType": result.result_type,
+                "modelId": result.model_id,
+                "hypotheses": [h.model_dump(by_alias=True) for h in result.hypotheses],
+            }
+        except Exception:
+            pass
+
+    return {"roomId": room_id, "hypotheses": room.observations}
+
+@app.get("/rooms/{room_id}/assets/{filename}")
+async def get_asset_file(room_id: str, filename: str):
+
+    if ".." in filename or "/" in filename:
+        raise HTTPException(400, "Invalid filename")
+    file_path = Path("data/rooms") / room_id / "reconstruction" / filename
+    if not file_path.exists():
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(file_path)
+
+@app.get("/rooms/{room_id}/assets")
+def assets(room_id: str):
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        return {"status": "pending"}
+    return {"status": room.reconstruction_status, **room.reconstruction_assets}

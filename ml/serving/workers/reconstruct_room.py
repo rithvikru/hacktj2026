@@ -1,38 +1,92 @@
 from __future__ import annotations
 
-import argparse
-import json
-from datetime import UTC, datetime
+import logging
+from pathlib import Path
 
-from hacktj2026_ml.paths import ML_ROOT
+logger = logging.getLogger(__name__)
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a reconstruction worker job file.")
-    parser.add_argument("--room-id", required=True, help="Logical room identifier.")
-    parser.add_argument("--frame-bundle", required=True, help="Path to the uploaded frame bundle.")
-    parser.add_argument(
-        "--output",
-        default="outputs/serving/reconstruct-worker-job.json",
-        help="Output path for the worker job JSON.",
+async def reconstruct_room(
+    room_id: str,
+    frame_dir: Path,
+    frames: list[dict],
+    room_store,
+) -> None:
+    import asyncio
+
+    output_dir = Path("data/rooms") / room_id / "reconstruction"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    room_store.update(room_id, reconstruction_status="processing")
+
+    try:
+
+        assets = await asyncio.to_thread(
+            _run_pipeline, room_id, frame_dir, frames, output_dir
+        )
+        room_store.update(
+            room_id,
+            reconstruction_status="complete",
+            reconstruction_assets=assets,
+        )
+    except Exception as e:
+        logger.exception("Reconstruction failed for room %s", room_id)
+        room_store.update(
+            room_id,
+            reconstruction_status="failed",
+            reconstruction_assets={"error": str(e)},
+        )
+
+def _run_pipeline(
+    room_id: str,
+    frame_dir: Path,
+    frames: list[dict],
+    output_dir: Path,
+) -> dict:
+
+    from reconstruction.pose_validation.validate_poses import validate_poses
+
+    report = validate_poses(frames)
+    logger.info(
+        "Pose validation: %d/%d valid, %d jumps, %d warnings",
+        report.valid_frames,
+        report.total_frames,
+        report.pose_jump_count,
+        len(report.warnings),
     )
-    return parser.parse_args()
 
-def main() -> None:
-    args = parse_args()
-    output_path = ML_ROOT / args.output
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    from reconstruction.da3.run_pipeline import estimate_depth
 
-    payload = {
-        "job_type": "reconstruct_room",
-        "room_id": args.room_id,
-        "frame_bundle": args.frame_bundle,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
+    image_paths = []
+    for f in frames:
+        img_name = f.get("imagePath", f.get("image_path", ""))
+        if img_name:
+            p = frame_dir / img_name
+            if p.exists():
+                image_paths.append(p)
 
-    with output_path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
+    if not image_paths:
+        raise ValueError("No valid images found in frame bundle")
 
-    print(f"Wrote reconstruction worker job to {output_path}")
+    arkit_depth_dir = frame_dir / "depth"
+    depth_results = estimate_depth(
+        image_paths,
+        arkit_depth_dir=arkit_depth_dir if arkit_depth_dir.is_dir() else None,
+    )
+    logger.info("Depth estimation complete: %d results", len(depth_results))
 
-if __name__ == "__main__":
-    main()
+    from reconstruction.pointcloud.generate import generate_pointcloud, save_ply
+
+    pc = generate_pointcloud(depth_results, frames, frame_dir)
+    ply_path = output_dir / "pointcloud.ply"
+    save_ply(pc, ply_path)
+    logger.info("Point cloud saved: %d points", len(pc.points))
+
+    from reconstruction.gaussian.export_scene import train_gaussians
+
+    splat_path = train_gaussians(ply_path, frame_dir, frames, output_dir)
+
+    assets = {"pointCloudURL": f"/rooms/{room_id}/assets/pointcloud.ply"}
+    if splat_path and splat_path.exists():
+        assets["splatURL"] = f"/rooms/{room_id}/assets/{splat_path.name}"
+
+    return assets
