@@ -106,7 +106,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
 
     // MARK: - Finalize
 
-    func finalizeScan(modelContext: ModelContext) async {
+    func finalizeScan(modelContext: ModelContext, backendClient: BackendClient? = nil) async {
         guard let data = capturedRoomData,
               let roomID = activeRoomID,
               let sessionID = activeSessionID,
@@ -137,11 +137,13 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 }
             }
 
+            let bundleDirectory = persistence.frameBundleDirectory(for: roomID, sessionID: sessionID)
+            let bundleFrames = collectedFrames.map { $0.bundleRelative(to: bundleDirectory) }
             let bundleManifest = FrameBundleManifest(
                 roomID: roomID,
                 sessionID: sessionID,
-                frames: collectedFrames,
-                auxiliaryAssets: collectedFrames.map { frame in
+                frames: bundleFrames,
+                auxiliaryAssets: bundleFrames.map { frame in
                     FrameAuxiliaryAssets(
                         frameID: frame.id,
                         confidenceMapPath: frame.confidenceMapPath
@@ -159,9 +161,21 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
 
             modelContext.insert(roomRecord)
             persistCapturedRoom(room, roomID: roomID, roomRecord: roomRecord, modelContext: modelContext)
-            roomRecord.reconstructionStatus = .complete
+            roomRecord.reconstructionStatus = .pending
             roomRecord.updatedAt = Date()
             try modelContext.save()
+
+            if let backendClient {
+                Task { @MainActor in
+                    await Self.syncRoomToBackend(
+                        roomID: roomID,
+                        roomName: roomRecord.name,
+                        bundleManifestURL: bundleURL,
+                        modelContext: modelContext,
+                        backendClient: backendClient
+                    )
+                }
+            }
 
             savedRoomID = roomID
         } catch {
@@ -347,6 +361,116 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d, h:mm a"
         return "Scanned Room \(formatter.string(from: Date()))"
+    }
+
+    private static func syncRoomToBackend(
+        roomID: UUID,
+        roomName: String,
+        bundleManifestURL: URL,
+        modelContext: ModelContext,
+        backendClient: BackendClient
+    ) async {
+        await updateRoom(roomID: roomID, modelContext: modelContext) { room in
+            room.reconstructionStatus = .uploading
+            room.updatedAt = Date()
+        }
+
+        do {
+            let backendRoomID = try await backendClient.createRoom(
+                id: roomID,
+                name: roomName,
+                metadata: [
+                    "source": "ios_scan",
+                    "room_id": roomID.uuidString,
+                ]
+            )
+
+            guard backendRoomID == roomID else {
+                throw SyncError.roomIDMismatch(expected: roomID, received: backendRoomID)
+            }
+
+            try await backendClient.uploadFrameBundle(roomID: backendRoomID, bundleURL: bundleManifestURL)
+            try await backendClient.triggerReconstruction(roomID: backendRoomID)
+
+            await updateRoom(roomID: roomID, modelContext: modelContext) { room in
+                room.reconstructionStatus = .processing
+                room.updatedAt = Date()
+            }
+
+            try await pollReconstruction(
+                localRoomID: roomID,
+                backendRoomID: backendRoomID,
+                modelContext: modelContext,
+                backendClient: backendClient
+            )
+        } catch {
+            await updateRoom(roomID: roomID, modelContext: modelContext) { room in
+                room.reconstructionStatus = .failed
+                room.updatedAt = Date()
+            }
+        }
+    }
+
+    private static func pollReconstruction(
+        localRoomID: UUID,
+        backendRoomID: UUID,
+        modelContext: ModelContext,
+        backendClient: BackendClient
+    ) async throws {
+        for _ in 0..<30 {
+            let assets = try await backendClient.fetchReconstructionAssets(roomID: backendRoomID)
+            let status = ReconstructionStatus(rawValue: assets.status) ?? .pending
+
+            await updateRoom(roomID: localRoomID, modelContext: modelContext) { room in
+                room.reconstructionStatus = status
+                room.denseAssetPath = assets.denseAssetURL ?? assets.pointCloudURL ?? room.denseAssetPath
+                room.updatedAt = Date()
+            }
+
+            if status == .complete {
+                return
+            }
+            if status == .failed {
+                throw SyncError.reconstructionFailed
+            }
+
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+
+        throw SyncError.reconstructionTimedOut
+    }
+
+    private static func updateRoom(
+        roomID: UUID,
+        modelContext: ModelContext,
+        mutate: (RoomRecord) -> Void
+    ) async {
+        var descriptor = FetchDescriptor<RoomRecord>(
+            predicate: #Predicate { $0.id == roomID }
+        )
+        descriptor.fetchLimit = 1
+        guard let room = try? modelContext.fetch(descriptor).first else {
+            return
+        }
+        mutate(room)
+        try? modelContext.save()
+    }
+
+    private enum SyncError: LocalizedError {
+        case roomIDMismatch(expected: UUID, received: UUID)
+        case reconstructionFailed
+        case reconstructionTimedOut
+
+        var errorDescription: String? {
+            switch self {
+            case .roomIDMismatch(let expected, let received):
+                return "Backend room ID mismatch. Expected \(expected.uuidString), got \(received.uuidString)."
+            case .reconstructionFailed:
+                return "Backend reconstruction failed."
+            case .reconstructionTimedOut:
+                return "Backend reconstruction did not finish before timeout."
+            }
+        }
     }
 
     private func persistCapturedRoom(

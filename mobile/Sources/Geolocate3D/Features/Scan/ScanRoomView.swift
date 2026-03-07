@@ -4,6 +4,7 @@ import SwiftData
 
 struct ScanRoomView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @Environment(BackendClient.self) private var backendClient
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel = ScanViewModel()
 
@@ -40,7 +41,12 @@ struct ScanRoomView: View {
                     Spacer()
                     if viewModel.scanState == .ready {
                         Button("Save Room") {
-                            Task { await viewModel.finalizeScan(modelContext: modelContext) }
+                            Task {
+                                await viewModel.finalizeScan(
+                                    modelContext: modelContext,
+                                    backendClient: backendClient
+                                )
+                            }
                         }
                         .buttonStyle(SpatialButtonStyle())
                     }

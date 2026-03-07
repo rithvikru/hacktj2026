@@ -1,1 +1,1 @@
-"""API package for ML service stubs."""
+"""FastAPI application package."""

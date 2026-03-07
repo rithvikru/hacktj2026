@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from heapq import heappop, heappush
 from math import ceil, sqrt
 
-# Just take from scaffold dont do it again
 @dataclass
 class Rect:
     x1: float
@@ -43,7 +42,6 @@ def clamp(v, lo, hi):
 
 
 def scene_graph_to_obstacles(scene_graph):
-    # rithvik fix this part up its fried cause if scene graph extends it gets weird later
     obs = []
     if not scene_graph:
         return obs

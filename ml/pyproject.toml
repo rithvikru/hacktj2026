@@ -32,6 +32,7 @@ export = [
 ]
 serving = [
     "fastapi>=0.115.11",
+    "httpx>=0.28.1",
     "python-multipart>=0.0.18",
     "uvicorn>=0.34.0",
 ]
@@ -48,10 +49,16 @@ reconstruction = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/hacktj2026_ml"]
+packages = [
+    "src/hacktj2026_ml",
+    "hidden_inference",
+    "open_vocab",
+    "reconstruction",
+    "serving",
+]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 100

@@ -202,7 +202,6 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         import numpy as np
         from PIL import Image
 
-        from open_vocab.backproject import bbox_center_to_world, make_world_transform_16
         from open_vocab.grounding_dino.run_grounding import detect
         from open_vocab.retrieval.build_index import build_index, query_index
         from open_vocab.sam2.run_segmentation import segment
@@ -221,14 +220,19 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
     image_paths: list[Path] = []
     if request.frame_refs:
         for ref in request.frame_refs:
-            p = room.frame_dir / ref
+            p = _resolve_room_file(room.frame_dir, ref)
             if p.exists():
                 image_paths.append(p)
     else:
         for frame in room.frames:
-            filename = frame.get("filename") or frame.get("image")
+            filename = (
+                frame.get("image_path")
+                or frame.get("imagePath")
+                or frame.get("filename")
+                or frame.get("image")
+            )
             if filename:
-                p = room.frame_dir / filename
+                p = _resolve_room_file(room.frame_dir, filename)
                 if p.exists():
                     image_paths.append(p)
 
@@ -328,15 +332,32 @@ def _try_backproject(det, room, images: dict) -> list[float] | None:
         if frame_meta is None:
             return None
 
-        intrinsics = frame_meta.get("intrinsics")
-        extrinsics = frame_meta.get("extrinsics") or frame_meta.get("cameraPoseTransform")
+        intrinsics = frame_meta.get("intrinsics9") or frame_meta.get("intrinsics_9") or frame_meta.get("intrinsics")
+        extrinsics = (
+            frame_meta.get("camera_transform16")
+            or frame_meta.get("cameraTransform16")
+            or frame_meta.get("extrinsics")
+            or frame_meta.get("cameraPoseTransform")
+        )
         depth = frame_meta.get("estimatedDepth") or frame_meta.get("depth")
 
-        if not intrinsics or not extrinsics or not depth:
+        if not intrinsics or not extrinsics:
             return None
 
         img = images.get(det.image_path)
         if img is None:
+            return None
+
+        if depth in (None, "", 0):
+            depth_path = frame_meta.get("depth_path") or frame_meta.get("depthPath")
+            if depth_path:
+                depth = _sample_depth_at_bbox_center(
+                    bundle_dir=room.frame_dir,
+                    depth_reference=depth_path,
+                    bbox_xyxy_norm=det.bbox_xyxy_norm,
+                )
+
+        if depth in (None, "", 0):
             return None
 
         h, w = img.shape[:2]
@@ -344,3 +365,42 @@ def _try_backproject(det, room, images: dict) -> list[float] | None:
         return make_world_transform_16(pos)
     except Exception:
         return None
+
+
+def _resolve_room_file(bundle_dir: Path, reference: str) -> Path:
+    candidate = Path(reference)
+    if candidate.is_absolute():
+        return candidate
+    if (bundle_dir / candidate).exists():
+        return bundle_dir / candidate
+    return bundle_dir / candidate.name
+
+
+def _sample_depth_at_bbox_center(
+    bundle_dir: Path,
+    depth_reference: str,
+    bbox_xyxy_norm: list[float],
+) -> float | None:
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return None
+
+    depth_path = _resolve_room_file(bundle_dir, depth_reference)
+    if not depth_path.exists():
+        return None
+
+    depth_image = np.array(Image.open(depth_path), dtype=np.float32)
+    if depth_image.ndim > 2:
+        depth_image = depth_image[..., 0]
+
+    height, width = depth_image.shape[:2]
+    center_x = min(max(int(((bbox_xyxy_norm[0] + bbox_xyxy_norm[2]) * 0.5) * width), 0), width - 1)
+    center_y = min(max(int(((bbox_xyxy_norm[1] + bbox_xyxy_norm[3]) * 0.5) * height), 0), height - 1)
+    value = float(depth_image[center_y, center_x])
+    if value <= 0:
+        return None
+    if depth_path.suffix.lower() == ".png":
+        return value / 1000.0
+    return value

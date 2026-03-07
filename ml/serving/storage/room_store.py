@@ -26,6 +26,10 @@ class RoomStore:
         return cls._instance
 
     def create(self, room_id: str, name: str) -> RoomState:
+        existing = self._rooms.get(room_id)
+        if existing is not None:
+            existing.name = name
+            return existing
         room = RoomState(room_id=room_id, name=name)
         self._rooms[room_id] = room
         return room

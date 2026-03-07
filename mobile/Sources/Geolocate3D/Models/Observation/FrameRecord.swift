@@ -14,12 +14,12 @@ struct FrameRecord: Codable, Identifiable {
     let selectedForTraining: Bool
     let selectedForEval: Bool
 
-    init(roomID: UUID, sessionID: UUID, timestamp: Date = Date(), imagePath: String,
+    init(id: UUID = UUID(), roomID: UUID, sessionID: UUID, timestamp: Date = Date(), imagePath: String,
          depthPath: String? = nil, confidenceMapPath: String? = nil,
          cameraTransform16: [Float], intrinsics9: [Float],
          trackingState: String, selectedForTraining: Bool = false,
          selectedForEval: Bool = false) {
-        self.id = UUID()
+        self.id = id
         self.roomID = roomID
         self.sessionID = sessionID
         self.timestamp = timestamp
@@ -40,6 +40,7 @@ struct FrameRecord: Codable, Identifiable {
         case timestamp
         case imagePath = "image_path"
         case depthPath = "depth_path"
+        case confidenceMapPath = "confidence_map_path"
         case cameraTransform16 = "camera_transform16"
         case intrinsics9 = "intrinsics9"
         case trackingState = "tracking_state"
@@ -55,7 +56,7 @@ struct FrameRecord: Codable, Identifiable {
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         imagePath = try container.decode(String.self, forKey: .imagePath)
         depthPath = try container.decodeIfPresent(String.self, forKey: .depthPath)
-        confidenceMapPath = nil
+        confidenceMapPath = try container.decodeIfPresent(String.self, forKey: .confidenceMapPath)
         cameraTransform16 = try container.decode([Float].self, forKey: .cameraTransform16)
         intrinsics9 = try container.decode([Float].self, forKey: .intrinsics9)
         trackingState = try container.decode(String.self, forKey: .trackingState)
@@ -71,10 +72,51 @@ struct FrameRecord: Codable, Identifiable {
         try container.encode(timestamp, forKey: .timestamp)
         try container.encode(imagePath, forKey: .imagePath)
         try container.encodeIfPresent(depthPath, forKey: .depthPath)
+        try container.encodeIfPresent(confidenceMapPath, forKey: .confidenceMapPath)
         try container.encode(cameraTransform16, forKey: .cameraTransform16)
         try container.encode(intrinsics9, forKey: .intrinsics9)
         try container.encode(trackingState, forKey: .trackingState)
         try container.encode(selectedForTraining, forKey: .selectedForTraining)
         try container.encode(selectedForEval, forKey: .selectedForEval)
+    }
+
+    func bundleRelative(to bundleDirectory: URL) -> FrameRecord {
+        FrameRecord(
+            id: id,
+            roomID: roomID,
+            sessionID: sessionID,
+            timestamp: timestamp,
+            imagePath: relativePath(for: imagePath, bundleDirectory: bundleDirectory) ?? imagePath,
+            depthPath: relativePath(for: depthPath, bundleDirectory: bundleDirectory),
+            confidenceMapPath: relativePath(for: confidenceMapPath, bundleDirectory: bundleDirectory),
+            cameraTransform16: cameraTransform16,
+            intrinsics9: intrinsics9,
+            trackingState: trackingState,
+            selectedForTraining: selectedForTraining,
+            selectedForEval: selectedForEval
+        )
+    }
+
+    private func relativePath(for path: String?, bundleDirectory: URL) -> String? {
+        guard let path else { return nil }
+        let fileURL = URL(fileURLWithPath: path)
+        let bundlePath = bundleDirectory.standardizedFileURL.path
+        let standardizedFilePath = fileURL.standardizedFileURL.path
+        if standardizedFilePath.hasPrefix(bundlePath + "/") {
+            return String(standardizedFilePath.dropFirst(bundlePath.count + 1))
+        }
+        if standardizedFilePath.hasPrefix(bundlePath) {
+            return String(standardizedFilePath.dropFirst(bundlePath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        if let imagesRange = standardizedFilePath.range(of: "/images/") {
+            return "images/" + String(standardizedFilePath[imagesRange.upperBound...])
+        }
+        if let depthRange = standardizedFilePath.range(of: "/depth/") {
+            return "depth/" + String(standardizedFilePath[depthRange.upperBound...])
+        }
+        if let confidenceRange = standardizedFilePath.range(of: "/confidence/") {
+            return "confidence/" + String(standardizedFilePath[confidenceRange.upperBound...])
+        }
+        return fileURL.lastPathComponent
     }
 }

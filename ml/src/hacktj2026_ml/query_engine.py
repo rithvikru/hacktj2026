@@ -176,9 +176,18 @@ def build_response_explanation(
 
 
 def deduplicate_results(results: list[SearchResultDTO]) -> list[SearchResultDTO]:
-    deduped: dict[tuple[str, str, str | None], SearchResultDTO] = {}
+    deduped: dict[tuple[object, ...], SearchResultDTO] = {}
     for result in results:
-        key = (result.label, result.result_type, result.frame_id)
+        bbox_key = tuple(round(value, 4) for value in result.bbox_xyxy_norm or [])
+        world_key = tuple(round(value, 4) for value in result.world_transform16 or [])
+        key = (
+            result.label,
+            result.result_type,
+            result.frame_id,
+            bbox_key,
+            world_key,
+            result.mask_ref or result.id,
+        )
         current = deduped.get(key)
         if current is None or result.confidence > current.confidence:
             deduped[key] = result

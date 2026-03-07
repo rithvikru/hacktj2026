@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import tempfile
 import zipfile
 from pathlib import Path
@@ -10,7 +9,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
 from hacktj2026_ml.chat_service import ChatService
@@ -21,12 +20,21 @@ from hacktj2026_ml.query_contracts import (
     PlannerPlan,
     PlannerRequest,
     QueryRequest,
-    QueryResponseDTO,
 )
-from hacktj2026_ml.query_engine import QueryEngine, build_planner_request
+from hacktj2026_ml.query_engine import (
+    QueryEngine,
+    build_open_vocab_request,
+    build_planner_request,
+)
 from hacktj2026_ml.route_planner import plan_route
 from hacktj2026_ml.toolkit import DefaultQueryToolkit
 from serving.scene_graph.builder import build_scene_graph
+from serving.storage.frame_bundle import (
+    extract_frame_records,
+    load_manifest,
+    normalize_frame_bundle_manifest,
+    write_manifest,
+)
 from serving.storage.room_store import RoomStore
 
 
@@ -34,6 +42,7 @@ from serving.storage.room_store import RoomStore
 
 
 class RoomCreateRequest(APIDTOModel):
+    room_id: str | None = None
     name: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -117,16 +126,6 @@ class RouteResponseDTO(APIDTOModel):
     waypoints: list[RouteWaypointDTO] = Field(default_factory=list)
 
 
-class SimpleQueryBody(BaseModel):
-    """Accept both 'query' (iOS) and 'query_text' (spec) keys."""
-    query: str | None = None
-    query_text: str | None = None
-
-    @property
-    def resolved_query(self) -> str:
-        return self.query or self.query_text or ""
-
-
 # --- App setup ---
 
 app = FastAPI(title="hacktj2026-ml", version="0.2.0")
@@ -154,13 +153,22 @@ def list_rooms():
 @app.post("/rooms")
 def create_room(request: RoomCreateRequest):
     store = RoomStore()
-    room_id = str(uuid4())
-    store.create(room_id, request.name)
-    return {"roomID": room_id, "name": request.name, "status": "created"}
+    room_id = request.room_id or str(uuid4())
+    existing = store.get(room_id)
+    room = store.create(room_id, request.name)
+    status = "existing" if existing is not None else "created"
+    return {"roomID": room.room_id, "name": room.name, "status": status}
 
 
-@app.post("/rooms/{room_id}/frame-bundles")
-async def upload_frame_bundle(room_id: str, file: UploadFile = File(...)):
+@app.post("/rooms/{room_id}/frame-bundles", response_model=FrameBundleAcceptedResponse)
+async def upload_frame_bundle(
+    room_id: str,
+    file: UploadFile | None = File(default=None),
+    manifest: UploadFile | None = File(default=None),
+    images: list[UploadFile] | None = File(default=None),
+    depth_files: list[UploadFile] | None = File(default=None),
+    confidence_files: list[UploadFile] | None = File(default=None),
+) -> FrameBundleAcceptedResponse:
     store = RoomStore()
     room = store.get(room_id)
     if not room:
@@ -169,36 +177,51 @@ async def upload_frame_bundle(room_id: str, file: UploadFile = File(...)):
     data_dir = Path("data/rooms") / room_id / "frames"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save uploaded file
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    content = await file.read()
-    tmp.write(content)
-    tmp.close()
+    if manifest is not None:
+        await _save_upload(manifest, data_dir / "manifest.json")
+        for upload in images or []:
+            await _save_upload(upload, data_dir / "images" / Path(upload.filename or "image.bin").name)
+        for upload in depth_files or []:
+            await _save_upload(upload, data_dir / "depth" / Path(upload.filename or "depth.bin").name)
+        for upload in confidence_files or []:
+            await _save_upload(upload, data_dir / "confidence" / Path(upload.filename or "confidence.bin").name)
+    elif file is not None:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or "bundle.zip").suffix or ".zip")
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+        try:
+            with zipfile.ZipFile(tmp.name, "r") as zf:
+                _safe_extract_zip(zf, data_dir)
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(400, "Frame bundle must be uploaded as multipart files or a ZIP archive.") from exc
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+    else:
+        raise HTTPException(400, "No frame bundle payload provided.")
 
-    # Extract ZIP
-    with zipfile.ZipFile(tmp.name, "r") as zf:
-        zf.extractall(data_dir)
-    Path(tmp.name).unlink()
-
-    # Parse manifest if present
     manifest_path = data_dir / "manifest.json"
-    frames: list[dict] = []
+    frames: list[dict[str, Any]] = []
+    session_id: str | None = None
     if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text())
-        frames = manifest.get("frames", [])
+        manifest_payload = normalize_frame_bundle_manifest(load_manifest(manifest_path), data_dir)
+        write_manifest(manifest_path, manifest_payload)
+        frames = extract_frame_records(manifest_payload)
+        session_id = manifest_payload.get("session_id")
 
     room.frame_dir = data_dir
     room.frames = frames
+    room.observations = _extract_observations(frames)
 
-    # Build scene graph from observations
     room.scene_graph = build_scene_graph(room)
 
-    return {
-        "roomID": room_id,
-        "bundleID": str(uuid4()),
-        "status": "accepted",
-        "frameCount": len(frames),
-    }
+    return FrameBundleAcceptedResponse(
+        room_id=room_id,
+        bundle_id=str(uuid4()),
+        status="accepted",
+        frame_count=len(frames),
+        session_id=session_id,
+    )
 
 
 @app.post("/rooms/{room_id}/reconstruct", response_model=JobAcceptedResponse)
@@ -275,23 +298,11 @@ def route_room(room_id: str, request: RouteRequestDTO) -> RouteResponseDTO:
     return RouteResponseDTO(**route)
 
 
-@app.post("/rooms/{room_id}/open-vocab-search")
-def open_vocab_search(room_id: str, request: OpenVocabSearchRequest) -> list[dict]:
-    adjusted_request = request.model_copy(update={"room_id": room_id})
+@app.post("/rooms/{room_id}/open-vocab-search", response_model=OpenVocabSearchResponseDTO)
+def open_vocab_search(room_id: str, request: dict[str, Any]) -> OpenVocabSearchResponseDTO:
+    adjusted_request = _build_open_vocab_request_from_payload(room_id=room_id, payload=request)
     toolkit = engine.toolkit or DefaultQueryToolkit()
-    response = toolkit.query_open_vocab(adjusted_request)
-    # iOS expects flat array of BackendSearchResult
-    return [
-        {
-            "id": c.id,
-            "label": request.target_phrase,
-            "confidence": c.confidence,
-            "worldTransform": c.world_transform16,
-            "evidence": c.evidence,
-            "explanation": c.explanation,
-        }
-        for c in response.candidates
-    ]
+    return toolkit.query_open_vocab(adjusted_request)
 
 
 @app.get("/rooms/{room_id}/scene-graph")
@@ -346,3 +357,46 @@ def assets(room_id: str):
     if not room:
         return {"status": "pending"}
     return {"status": room.reconstruction_status, **room.reconstruction_assets}
+
+
+async def _save_upload(upload: UploadFile, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(await upload.read())
+
+
+def _build_open_vocab_request_from_payload(room_id: str, payload: dict[str, Any]) -> OpenVocabSearchRequest:
+    try:
+        return OpenVocabSearchRequest.model_validate({**payload, "room_id": room_id})
+    except Exception:
+        query_text = (
+            payload.get("query")
+            or payload.get("queryText")
+            or payload.get("query_text")
+            or ""
+        ).strip()
+        if not query_text:
+            raise HTTPException(422, "Open-vocab search requires query text.")
+
+        frame_refs = payload.get("frameRefs") or payload.get("frame_refs") or []
+        query_request = QueryRequest(query_text=query_text, frame_refs=frame_refs)
+        planner_request = build_planner_request(room_id=room_id, request=query_request)
+        planner_plan = engine.build_plan(planner_request)
+        return build_open_vocab_request(room_id=room_id, plan=planner_plan, query_request=query_request)
+
+
+def _extract_observations(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    observations: list[dict[str, Any]] = []
+    for frame in frames:
+        frame_observations = frame.get("observations", [])
+        if isinstance(frame_observations, list):
+            observations.extend(item for item in frame_observations if isinstance(item, dict))
+    return observations
+
+
+def _safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
+    destination = destination.resolve()
+    for member in archive.infolist():
+        member_path = (destination / member.filename).resolve()
+        if destination not in member_path.parents and member_path != destination:
+            raise HTTPException(400, "Frame bundle archive contains an invalid path.")
+    archive.extractall(destination)

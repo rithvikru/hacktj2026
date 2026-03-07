@@ -29,7 +29,22 @@ def generate_pointcloud(
     all_points = []
     all_colors = []
 
-    for depth_result, frame_meta in zip(depth_results, frame_metadata):
+    metadata_by_name = {
+        Path(
+            frame_meta.get("image_path")
+            or frame_meta.get("imagePath")
+            or frame_meta.get("image")
+            or frame_meta.get("filename", "")
+        ).name: frame_meta
+        for frame_meta in frame_metadata
+    }
+
+    for depth_result in depth_results:
+        frame_meta = metadata_by_name.get(Path(depth_result.image_path).name)
+        if frame_meta is None:
+            logger.warning("Skipping depth result without matching frame metadata: %s", depth_result.image_path)
+            continue
+
         intrinsics_9 = frame_meta.get(
             "intrinsics9", frame_meta.get("intrinsics_9", [])
         )
