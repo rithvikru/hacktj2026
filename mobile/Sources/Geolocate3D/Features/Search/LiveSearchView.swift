@@ -100,6 +100,22 @@ struct LiveSearchView: View {
                     .padding(.bottom, 8)
                 }
 
+                if !viewModel.routeStatusText.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: viewModel.routeWaypoints.isEmpty ? "exclamationmark.triangle.fill" : "figure.walk")
+                            .foregroundStyle(viewModel.routeWaypoints.isEmpty ? .warningAmber : .spatialCyan)
+                        Text(viewModel.routeStatusText)
+                            .font(SpatialFont.caption)
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+                }
+
                 // Floating query bar
                 FloatingQueryBar(onSubmit: { query in
                     Task {

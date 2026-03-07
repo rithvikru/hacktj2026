@@ -21,6 +21,7 @@ final class ARViewCoordinator: NSObject, ARSessionDelegate {
             // Update tracking state on the session manager
             self.sessionManager.trackingState = frame.camera.trackingState
             self.sessionManager.worldMappingStatus = frame.worldMappingStatus
+            self.viewModel.updateCameraTransform(frame.camera.transform)
 
             // Sync 3D entities and project to screen space
             self.viewModel.syncOverlays(in: arView)

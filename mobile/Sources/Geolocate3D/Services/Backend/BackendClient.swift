@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 /// HTTP client for the FastAPI backend.
 /// Handles room uploads, reconstruction polling, open-vocabulary search, and query execution.
@@ -99,6 +100,32 @@ final class BackendClient {
 
         let (data, _) = try await session.data(for: request)
         return try decoder.decode(BackendQueryResponse.self, from: data)
+    }
+
+    func routeRoom(
+        roomID: UUID,
+        startWorldTransform: simd_float4x4,
+        targetWorldTransform: simd_float4x4? = nil,
+        targetLabel: String? = nil,
+        gridResolutionM: Float = 0.20,
+        obstacleInflationRadiusM: Float = 0.25
+    ) async throws -> BackendRouteResponse {
+        let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/route")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(
+            RouteRequest(
+                startWorldTransform16: startWorldTransform.columnMajorArray,
+                targetWorldTransform16: targetWorldTransform?.columnMajorArray,
+                targetLabel: targetLabel,
+                gridResolutionM: gridResolutionM,
+                obstacleInflationRadiusM: obstacleInflationRadiusM
+            )
+        )
+
+        let (data, _) = try await session.data(for: request)
+        return try decoder.decode(BackendRouteResponse.self, from: data)
     }
 
     // MARK: - Connection Check
@@ -353,11 +380,92 @@ struct BackendQueryResponse: Decodable {
     }
 }
 
+struct BackendRouteResponse: Decodable {
+    let reachable: Bool
+    let reason: String
+    let targetLabel: String?
+    let snappedGoalWorldTransform: [Float]?
+    let waypoints: [BackendRouteWaypoint]
+
+    private enum CodingKeys: String, CodingKey {
+        case reachable
+        case reason
+        case targetLabel
+        case target_label
+        case snappedGoalWorldTransform
+        case snapped_goal_world_transform16
+        case snappedGoalWorldTransform16
+        case waypoints
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reachable = try container.decodeIfPresent(Bool.self, forKey: .reachable) ?? false
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? "unknown"
+        targetLabel =
+            try container.decodeIfPresent(String.self, forKey: .targetLabel) ??
+            (try container.decodeIfPresent(String.self, forKey: .target_label))
+        snappedGoalWorldTransform =
+            try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform) ??
+            (try container.decodeIfPresent([Float].self, forKey: .snappedGoalWorldTransform16)) ??
+            (try container.decodeIfPresent([Float].self, forKey: .snapped_goal_world_transform16))
+        waypoints = try container.decodeIfPresent([BackendRouteWaypoint].self, forKey: .waypoints) ?? []
+    }
+}
+
+struct BackendRouteWaypoint: Decodable, Identifiable {
+    let id: UUID
+    let x: Float
+    let y: Float
+    let z: Float
+    let worldTransform: [Float]
+
+    private enum CodingKeys: String, CodingKey {
+        case x
+        case y
+        case z
+        case worldTransform
+        case world_transform
+        case worldTransform16
+        case world_transform16
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = UUID()
+        x = try container.decodeIfPresent(Float.self, forKey: .x) ?? 0
+        y = try container.decodeIfPresent(Float.self, forKey: .y) ?? 0
+        z = try container.decodeIfPresent(Float.self, forKey: .z) ?? 0
+        worldTransform =
+            try container.decodeIfPresent([Float].self, forKey: .worldTransform) ??
+            (try container.decodeIfPresent([Float].self, forKey: .world_transform)) ??
+            (try container.decodeIfPresent([Float].self, forKey: .worldTransform16)) ??
+            (try container.decodeIfPresent([Float].self, forKey: .world_transform16)) ??
+            []
+    }
+}
+
 private struct QueryRequest: Encodable {
     let queryText: String
 
     private enum CodingKeys: String, CodingKey {
         case queryText = "query_text"
+    }
+}
+
+private struct RouteRequest: Encodable {
+    let startWorldTransform16: [Float]
+    let targetWorldTransform16: [Float]?
+    let targetLabel: String?
+    let gridResolutionM: Float
+    let obstacleInflationRadiusM: Float
+
+    private enum CodingKeys: String, CodingKey {
+        case startWorldTransform16 = "start_world_transform16"
+        case targetWorldTransform16 = "target_world_transform16"
+        case targetLabel = "target_label"
+        case gridResolutionM = "grid_resolution_m"
+        case obstacleInflationRadiusM = "obstacle_inflation_radius_m"
     }
 }
 

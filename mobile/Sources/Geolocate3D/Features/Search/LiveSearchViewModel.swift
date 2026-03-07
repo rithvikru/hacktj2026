@@ -4,8 +4,9 @@ import RealityKit
 import ARKit
 import simd
 import SwiftData
+import SwiftUI
+import UIKit
 
-/// In-memory observation for the active AR session (Fix 6: NOT SwiftData).
 struct ActiveObservation: Identifiable {
     let id: UUID
     let label: String
@@ -14,13 +15,14 @@ struct ActiveObservation: Identifiable {
     var lastSeen: Date
 
     var position: SIMD3<Float> {
-        SIMD3(worldTransform.columns.3.x,
-               worldTransform.columns.3.y,
-               worldTransform.columns.3.z)
+        SIMD3(
+            worldTransform.columns.3.x,
+            worldTransform.columns.3.y,
+            worldTransform.columns.3.z
+        )
     }
 }
 
-/// Screen-projected observation for SwiftUI overlay positioning.
 struct ScreenObservation: Identifiable {
     let id: UUID
     let label: String
@@ -30,11 +32,27 @@ struct ScreenObservation: Identifiable {
     let confidenceClass: DetectionConfidenceClass
 }
 
+struct RouteWaypoint: Identifiable {
+    let id: UUID
+    let index: Int
+    let worldTransform: simd_float4x4
+
+    var position: SIMD3<Float> {
+        SIMD3(
+            worldTransform.columns.3.x,
+            worldTransform.columns.3.y,
+            worldTransform.columns.3.z
+        )
+    }
+}
+
 @Observable
 @MainActor
 final class LiveSearchViewModel {
     var activeObservations: [ActiveObservation] = []
     var screenProjectedObservations: [ScreenObservation] = []
+    var routeWaypoints: [RouteWaypoint] = []
+    var routeStatusText: String = ""
     var isSearching = false
     var currentQuery: String = ""
     var currentResult: SearchResult?
@@ -42,81 +60,93 @@ final class LiveSearchViewModel {
     private let intentParser = IntentParser()
     private let searchPlanner = SearchPlanner()
 
-    // Entity tracking — maps observation ID to the RealityKit anchor entity
+    @ObservationIgnored var currentCameraTransform: simd_float4x4?
     @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
+    @ObservationIgnored private var routeRootAnchor: AnchorEntity?
+    @ObservationIgnored private var routeVersion = 0
+    @ObservationIgnored private var renderedRouteVersion = -1
 
-    /// Sync 3D pin entities into the ARView scene for each active observation.
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
 
         let activeIDs = Set(activeObservations.map(\.id))
 
-        // Remove stale entities
         for (id, entity) in entityMap where !activeIDs.contains(id) {
             arView.scene.removeAnchor(entity)
             entityMap.removeValue(forKey: id)
         }
 
-        // Add or update entities
-        for obs in activeObservations {
-            if let existing = entityMap[obs.id] {
-                existing.transform = Transform(matrix: obs.worldTransform)
+        for observation in activeObservations {
+            if let existing = entityMap[observation.id] {
+                existing.transform = Transform(matrix: observation.worldTransform)
             } else {
-                let anchor = AnchorEntity(world: obs.worldTransform)
-                anchor.name = obs.id.uuidString
+                let anchor = AnchorEntity(world: observation.worldTransform)
+                anchor.name = observation.id.uuidString
 
-                let sphere = ModelEntity(
+                let marker = ModelEntity(
                     mesh: .generateSphere(radius: 0.015),
                     materials: [SimpleMaterial(color: .cyan, isMetallic: true)]
                 )
-                anchor.addChild(sphere)
+                anchor.addChild(marker)
                 arView.scene.addAnchor(anchor)
-                entityMap[obs.id] = anchor
+                entityMap[observation.id] = anchor
             }
         }
+
+        syncRouteOverlay(in: arView)
     }
 
-    /// Project 3D world positions to 2D screen coordinates for SwiftUI overlay.
     func updateScreenProjections(arView: ARView) {
-        screenProjectedObservations = activeObservations.compactMap { obs in
-            guard let screenPoint = arView.project(obs.position) else { return nil }
+        screenProjectedObservations = activeObservations.compactMap { observation in
+            guard let screenPoint = arView.project(observation.position) else { return nil }
 
-            // Only include if on-screen
             let bounds = arView.bounds
             guard bounds.contains(CGPoint(x: CGFloat(screenPoint.x), y: CGFloat(screenPoint.y))) else {
                 return nil
             }
 
-            let confClass: DetectionConfidenceClass
-            if obs.confidence >= 0.8 {
-                confClass = .confirmedHigh
-            } else if obs.confidence >= 0.5 {
-                confClass = .confirmedMedium
+            let confidenceClass: DetectionConfidenceClass
+            if observation.confidence >= 0.8 {
+                confidenceClass = .confirmedHigh
+            } else if observation.confidence >= 0.5 {
+                confidenceClass = .confirmedMedium
             } else {
-                confClass = .lastSeen
+                confidenceClass = .lastSeen
             }
 
             return ScreenObservation(
-                id: obs.id,
-                label: obs.label,
-                confidence: obs.confidence,
+                id: observation.id,
+                label: observation.label,
+                confidence: observation.confidence,
                 screenX: CGFloat(screenPoint.x),
                 screenY: CGFloat(screenPoint.y),
-                confidenceClass: confClass
+                confidenceClass: confidenceClass
             )
         }
     }
 
-    /// Clear all overlays from the scene.
     func clearOverlays(in arView: ARView?) {
         if let arView {
             for (_, entity) in entityMap {
                 arView.scene.removeAnchor(entity)
             }
+            if let routeRootAnchor {
+                arView.scene.removeAnchor(routeRootAnchor)
+            }
         }
         entityMap.removeAll()
+        routeRootAnchor = nil
         activeObservations.removeAll()
         screenProjectedObservations.removeAll()
+        routeWaypoints.removeAll()
+        routeStatusText = ""
+        currentCameraTransform = nil
+        routeVersion = 0
+        renderedRouteVersion = -1
+    }
+
+    func updateCameraTransform(_ transform: simd_float4x4) {
+        currentCameraTransform = transform
     }
 
     func executeSearch(
@@ -130,6 +160,7 @@ final class LiveSearchViewModel {
 
         currentQuery = trimmedQuery
         isSearching = true
+
         let intent = intentParser.parse(trimmedQuery, roomID: roomID)
         let execution = await searchPlanner.execute(
             intent: intent,
@@ -137,11 +168,19 @@ final class LiveSearchViewModel {
             modelContext: modelContext,
             backendClient: backendClient
         )
+
         currentResult = execution.result
         activeObservations = makeActiveObservations(
             from: execution.localObservations,
             backendResults: execution.backendResults
         )
+
+        await updateRoute(
+            for: execution,
+            roomID: roomID,
+            backendClient: backendClient
+        )
+
         isSearching = false
     }
 
@@ -171,7 +210,134 @@ final class LiveSearchViewModel {
                 lastSeen: Date()
             )
         }
+
         active.append(contentsOf: backendObservations)
         return active.sorted { $0.confidence > $1.confidence }
+    }
+
+    private func updateRoute(
+        for execution: SearchExecutionResult,
+        roomID: UUID?,
+        backendClient: BackendClient
+    ) async {
+        clearRoute(status: "")
+
+        guard let roomID else { return }
+        guard execution.result.resultType != .noResult else { return }
+        guard let startTransform = currentCameraTransform else {
+            routeStatusText = "Found a result. Move the phone a bit more so guidance can lock in."
+            return
+        }
+
+        let bestObservation = activeObservations.first
+        let targetLabel = bestObservation?.label ?? execution.result.label
+        let targetTransform = bestObservation?.worldTransform
+
+        do {
+            let route = try await backendClient.routeRoom(
+                roomID: roomID,
+                startWorldTransform: startTransform,
+                targetWorldTransform: targetTransform,
+                targetLabel: targetLabel.isEmpty ? nil : targetLabel
+            )
+
+            guard route.reachable else {
+                routeStatusText = "Guidance unavailable: \(route.reason)."
+                return
+            }
+
+            let waypoints = route.waypoints.enumerated().compactMap { index, waypoint -> RouteWaypoint? in
+                guard let matrix = simd_float4x4.fromArray(waypoint.worldTransform) else {
+                    return nil
+                }
+                return RouteWaypoint(
+                    id: waypoint.id,
+                    index: index,
+                    worldTransform: matrix
+                )
+            }
+
+            guard !waypoints.isEmpty else {
+                routeStatusText = "Guidance came back empty."
+                return
+            }
+
+            routeWaypoints = waypoints
+            routeVersion += 1
+
+            let label = route.targetLabel ?? targetLabel
+            let count = waypoints.count
+            let markerWord = count == 1 ? "marker" : "markers"
+            routeStatusText = label.isEmpty
+                ? "Guidance ready. \(count) \(markerWord) loaded."
+                : "Guidance to \(label) ready. \(count) \(markerWord)."
+        } catch {
+            routeStatusText = "Guidance failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearRoute(status: String) {
+        routeWaypoints.removeAll()
+        routeStatusText = status
+        routeVersion += 1
+    }
+
+    private func syncRouteOverlay(in arView: ARView) {
+        if routeWaypoints.isEmpty {
+            if let routeRootAnchor {
+                arView.scene.removeAnchor(routeRootAnchor)
+                self.routeRootAnchor = nil
+            }
+            renderedRouteVersion = routeVersion
+            return
+        }
+
+        guard renderedRouteVersion != routeVersion else { return }
+
+        if let routeRootAnchor {
+            arView.scene.removeAnchor(routeRootAnchor)
+        }
+
+        let routeRoot = AnchorEntity(world: matrix_identity_float4x4)
+        let routeColor = UIColor(Color.spatialCyan)
+        let goalColor = UIColor(Color.warningAmber)
+
+        for pair in zip(routeWaypoints, routeWaypoints.dropFirst()) {
+            if let segment = makeRouteSegment(from: pair.0.position, to: pair.1.position, color: routeColor) {
+                routeRoot.addChild(segment)
+            }
+        }
+
+        for waypoint in routeWaypoints {
+            let isStart = waypoint.index == 0
+            let isGoal = waypoint.index == routeWaypoints.count - 1
+            let radius: Float = isGoal ? 0.030 : (isStart ? 0.022 : 0.016)
+            let color = isGoal ? goalColor : (isStart ? .white : routeColor)
+
+            let marker = ModelEntity(
+                mesh: .generateSphere(radius: radius),
+                materials: [SimpleMaterial(color: color, isMetallic: true)]
+            )
+            marker.position = waypoint.position
+            routeRoot.addChild(marker)
+        }
+
+        arView.scene.addAnchor(routeRoot)
+        routeRootAnchor = routeRoot
+        renderedRouteVersion = routeVersion
+    }
+
+    private func makeRouteSegment(from start: SIMD3<Float>, to end: SIMD3<Float>, color: UIColor) -> ModelEntity? {
+        let delta = end - start
+        let length = simd_length(delta)
+        guard length > 0.001 else { return nil }
+
+        let segment = ModelEntity(
+            mesh: .generateBox(size: SIMD3<Float>(0.012, 0.012, length)),
+            materials: [SimpleMaterial(color: color.withAlphaComponent(0.8), isMetallic: false)]
+        )
+        segment.position = (start + end) * 0.5
+        segment.orientation = simd_quatf(from: SIMD3<Float>(0, 0, 1), to: simd_normalize(delta))
+        return segment
     }
 }
