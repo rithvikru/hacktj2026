@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Geolocate3D</string>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arkit</string>
+        <string>lidar</string>
+    </array>
+    <key>NSCameraUsageDescription</key>
+    <string>Geolocate3D uses the camera for AR room scanning and object detection.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Geolocate3D uses the microphone for voice queries.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Geolocate3D uses speech recognition for voice-based spatial queries.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Geolocate3D uses the local network for cooperative device search.</string>
+    <key>NSNearbyInteractionUsageDescription</key>
+    <string>Geolocate3D uses Nearby Interaction for precise object localization.</string>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict/>
+</dict>
+</plist>

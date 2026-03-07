@@ -1,0 +1,4 @@
+version: 1
+bundleID: com.geolocate3d.app
+infoPath: Info.plist
+entitlementsPath: App.entitlements
