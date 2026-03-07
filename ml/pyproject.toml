@@ -32,14 +32,19 @@ export = [
 ]
 serving = [
     "fastapi>=0.115.11",
+    "python-multipart>=0.0.18",
     "uvicorn>=0.34.0",
 ]
 retrieval = [
+    "faiss-cpu>=1.9.0",
     "open-clip-torch>=2.31.0",
     "transformers>=4.49.0",
 ]
 vision = [
     "opencv-python>=4.11.0.86",
+]
+reconstruction = [
+    "open3d>=0.18.0",
 ]
 
 [tool.hatch.build.targets.wheel]

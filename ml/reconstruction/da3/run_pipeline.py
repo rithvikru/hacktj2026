@@ -1,42 +1,100 @@
 from __future__ import annotations
 
-import argparse
-import json
-from datetime import UTC, datetime
+import logging
+from dataclasses import dataclass
+from pathlib import Path
 
-from hacktj2026_ml.paths import ML_ROOT
+import numpy as np
+from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create a delayed reconstruction job request.")
-    parser.add_argument("--room-id", required=True, help="Logical room identifier.")
-    parser.add_argument("--frame-bundle", required=True, help="Path to the room frame bundle.")
-    parser.add_argument(
-        "--output",
-        default="outputs/reconstruction/da3-job.json",
-        help="Output path for the request JSON.",
+@dataclass
+class DepthResult:
+    image_path: str
+    depth_map: np.ndarray  # H x W float32, metric depth in meters
+    original_size: tuple[int, int]  # (width, height)
+
+
+_pipe = None
+
+
+def _load_pipeline():
+    global _pipe
+    if _pipe is None:
+        try:
+            import torch
+            from transformers import pipeline
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            _pipe = pipeline(
+                "depth-estimation",
+                model="depth-anything/Depth-Anything-V2-Large-hf",
+                device=device,
+            )
+        except ImportError:
+            logger.warning(
+                "transformers or torch not installed; depth estimation unavailable"
+            )
+            raise
+    return _pipe
+
+
+def estimate_depth(
+    image_paths: list[Path],
+    arkit_depth_dir: Path | None = None,
+) -> list[DepthResult]:
+    """Estimate metric depth for each image.
+
+    Uses ARKit LiDAR depth for scale alignment if available.
+    """
+    pipe = _load_pipeline()
+    results = []
+
+    for img_path in image_paths:
+        if not img_path.exists():
+            logger.warning("Image not found, skipping: %s", img_path)
+            continue
+
+        image = Image.open(img_path).convert("RGB")
+        output = pipe(image)
+        depth = np.array(output["depth"], dtype=np.float32)
+
+        # If ARKit depth is available, use it for metric scale alignment
+        if arkit_depth_dir:
+            arkit_depth_path = arkit_depth_dir / f"{img_path.stem}_depth.png"
+            if arkit_depth_path.exists():
+                depth = _align_to_arkit_depth(depth, arkit_depth_path)
+
+        results.append(
+            DepthResult(
+                image_path=str(img_path),
+                depth_map=depth,
+                original_size=image.size,
+            )
+        )
+
+    return results
+
+
+def _align_to_arkit_depth(
+    predicted_depth: np.ndarray, arkit_depth_path: Path
+) -> np.ndarray:
+    """Scale predicted depth to match ARKit LiDAR depth (PNG16 in mm)."""
+    arkit_img = Image.open(arkit_depth_path)
+    arkit_depth = np.array(arkit_img, dtype=np.float32) / 1000.0  # mm to meters
+
+    # Use median ratio for scale alignment (robust to outliers)
+    valid = (arkit_depth > 0.1) & (arkit_depth < 10.0)
+    if valid.sum() < 100:
+        return predicted_depth
+
+    # Resize predicted to match ARKit resolution
+    h_ar, w_ar = arkit_depth.shape[:2]
+    pred_resized = np.array(
+        Image.fromarray(predicted_depth).resize((w_ar, h_ar), Image.BILINEAR)
     )
-    return parser.parse_args()
 
-
-def main() -> None:
-    args = parse_args()
-    output_path = ML_ROOT / args.output
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    payload = {
-        "model_track": "M5",
-        "room_id": args.room_id,
-        "frame_bundle": args.frame_bundle,
-        "uses_arkit_poses": True,
-        "created_at": datetime.now(UTC).isoformat(),
-    }
-
-    with output_path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-
-    print(f"Wrote reconstruction job scaffold to {output_path}")
-
-
-if __name__ == "__main__":
-    main()
+    ratio = np.median(arkit_depth[valid] / (pred_resized[valid] + 1e-6))
+    return predicted_depth * ratio

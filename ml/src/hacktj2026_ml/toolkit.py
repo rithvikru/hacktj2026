@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
@@ -15,6 +17,8 @@ from hacktj2026_ml.query_contracts import (
     PlannerRequest,
     SearchResultDTO,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class QueryToolkit(Protocol):
@@ -45,27 +49,13 @@ class DefaultQueryToolkit:
         return [observation_to_result(summary) for summary in sorted(matches, key=sort_observation, reverse=True)]
 
     def query_open_vocab(self, request: OpenVocabSearchRequest) -> OpenVocabSearchResponseDTO:
-        candidates: list[OpenVocabCandidateDTO] = []
-        for frame_id in request.frame_refs[: request.max_candidates]:
-            candidates.append(
-                OpenVocabCandidateDTO(
-                    id=str(uuid4()),
-                    confidence=0.52,
-                    bbox_xyxy_norm=[0.12, 0.16, 0.34, 0.48],
-                    mask_ref=None,
-                    frame_id=frame_id,
-                    world_transform16=None,
-                    evidence=["backendOpenVocab", "frameRef"],
-                    explanation=f"Candidate for '{request.target_phrase}' in preselected frame '{frame_id}'.",
-                )
-            )
-
+        candidates = _run_open_vocab_pipeline(request)
         return OpenVocabSearchResponseDTO(
             query_text=request.query_text,
             normalized_query=request.normalized_query,
             result_type="detected" if candidates else "not_found",
-            model_id="m2.open_vocab.detector",
-            model_version="0.1.0",
+            model_id="m2.open_vocab.grounding_dino+clip",
+            model_version="0.2.0",
             candidates=candidates,
         )
 
@@ -98,6 +88,38 @@ class DefaultQueryToolkit:
         ]
 
     def query_hidden_hypotheses(self, request: PlannerRequest, plan: PlannerPlan) -> list[HypothesisDTO]:
+        # Try real hidden inference pipeline with scene graph data
+        try:
+            from hidden_inference.rules.rank import rank_for_query
+            from serving.storage.room_store import RoomStore
+
+            store = RoomStore()
+            room = store.get(request.room_id)
+            if room and room.scene_graph:
+                result = rank_for_query(
+                    room.scene_graph, room.observations, plan.canonical_query_label
+                )
+                return [
+                    HypothesisDTO(
+                        id=str(uuid4()),
+                        query_label=plan.canonical_query_label,
+                        hypothesis_type="inferred",
+                        rank=h.rank,
+                        confidence=h.confidence,
+                        world_transform16=h.world_transform16,
+                        region_id=None,
+                        support_object_id=None,
+                        occluder_object_id=None,
+                        reason_codes=h.reason_codes,
+                        explanation=f"Hidden inference rank #{h.rank} for '{plan.canonical_query_label}'.",
+                        generated_at=now_iso(),
+                    )
+                    for h in result.hypotheses
+                ]
+        except Exception:
+            logger.debug("Hidden inference pipeline unavailable, falling back to stub", exc_info=True)
+
+        # Fallback: observation-based stub
         matching_observation = next(
             (
                 observation
@@ -169,3 +191,156 @@ def sort_observation(observation: ObservationSummary) -> tuple[float, str]:
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabCandidateDTO]:
+    """Run the full open-vocab pipeline: Grounding DINO -> SAM2 -> CLIP rerank -> backproject.
+
+    Falls back to dummy results if ML dependencies are not installed.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from open_vocab.backproject import bbox_center_to_world, make_world_transform_16
+        from open_vocab.grounding_dino.run_grounding import detect
+        from open_vocab.retrieval.build_index import build_index, query_index
+        from open_vocab.sam2.run_segmentation import segment
+        from serving.storage.room_store import RoomStore
+    except ImportError as exc:
+        logger.warning("ML pipeline imports unavailable, returning empty results: %s", exc)
+        return []
+
+    store = RoomStore()
+    room = store.get(request.room_id)
+    if not room or not room.frame_dir:
+        logger.info("No frames available for room %s", request.room_id)
+        return []
+
+    # Collect image paths from frame_refs or all frames in the room
+    image_paths: list[Path] = []
+    if request.frame_refs:
+        for ref in request.frame_refs:
+            p = room.frame_dir / ref
+            if p.exists():
+                image_paths.append(p)
+    else:
+        for frame in room.frames:
+            filename = frame.get("filename") or frame.get("image")
+            if filename:
+                p = room.frame_dir / filename
+                if p.exists():
+                    image_paths.append(p)
+
+    if not image_paths:
+        # Try to find any images in the frame directory
+        for ext in ("*.jpg", "*.jpeg", "*.png"):
+            image_paths.extend(room.frame_dir.glob(ext))
+
+    if not image_paths:
+        logger.info("No image files found for room %s", request.room_id)
+        return []
+
+    # 1. Grounding DINO detection
+    detections = detect(image_paths, request.target_phrase)
+    if not detections:
+        return []
+
+    # 2. Load images as numpy arrays for downstream steps
+    images: dict[str, np.ndarray] = {}
+    for det in detections:
+        if det.image_path not in images:
+            try:
+                images[det.image_path] = np.array(Image.open(det.image_path).convert("RGB"))
+            except Exception:
+                pass
+
+    # 3. Optional SAM 2 mask refinement (per image)
+    # We run segment for logging/metrics but use detections for the final result
+    for img_path, img_arr in images.items():
+        dets_for_img = [d for d in detections if d.image_path == img_path]
+        bboxes = [d.bbox_xyxy_norm for d in dets_for_img]
+        try:
+            segment(img_arr, bboxes)
+        except Exception:
+            pass  # non-critical
+
+    # 4. CLIP reranking via FAISS
+    try:
+        index, embeddings, metadata = build_index(detections, images)
+        reranked = query_index(index, embeddings, metadata, request.target_phrase, top_k=request.max_candidates)
+    except Exception as exc:
+        logger.warning("CLIP reranking failed, using raw detections: %s", exc)
+        reranked = None
+
+    # 5. Build candidates with optional back-projection
+    candidates: list[OpenVocabCandidateDTO] = []
+
+    if reranked:
+        for rr in reranked:
+            det = detections[rr.detection_idx]
+            world_t16 = _try_backproject(det, room, images)
+            candidates.append(
+                OpenVocabCandidateDTO(
+                    id=str(uuid4()),
+                    confidence=min(max(rr.similarity, 0.0), 1.0),
+                    bbox_xyxy_norm=rr.bbox_xyxy_norm,
+                    mask_ref=None,
+                    frame_id=Path(rr.image_path).name,
+                    world_transform16=world_t16,
+                    evidence=["backendOpenVocab", "groundingDINO", "clipReranked"],
+                    explanation=f"Detected '{rr.label}' with CLIP similarity {rr.similarity:.2f}.",
+                )
+            )
+    else:
+        for det in detections[: request.max_candidates]:
+            world_t16 = _try_backproject(det, room, images)
+            candidates.append(
+                OpenVocabCandidateDTO(
+                    id=str(uuid4()),
+                    confidence=min(max(det.confidence, 0.0), 1.0),
+                    bbox_xyxy_norm=det.bbox_xyxy_norm,
+                    mask_ref=None,
+                    frame_id=Path(det.image_path).name,
+                    world_transform16=world_t16,
+                    evidence=["backendOpenVocab", "groundingDINO"],
+                    explanation=f"Detected '{det.label}' with confidence {det.confidence:.2f}.",
+                )
+            )
+
+    return candidates
+
+
+def _try_backproject(det, room, images: dict) -> list[float] | None:
+    """Try to back-project a detection to world coordinates using frame metadata."""
+    try:
+        from open_vocab.backproject import bbox_center_to_world, make_world_transform_16
+
+        # Find frame metadata for this detection
+        frame_name = Path(det.image_path).name
+        frame_meta = None
+        for f in room.frames:
+            fname = f.get("filename") or f.get("image", "")
+            if fname == frame_name:
+                frame_meta = f
+                break
+
+        if frame_meta is None:
+            return None
+
+        intrinsics = frame_meta.get("intrinsics")
+        extrinsics = frame_meta.get("extrinsics") or frame_meta.get("cameraPoseTransform")
+        depth = frame_meta.get("estimatedDepth") or frame_meta.get("depth")
+
+        if not intrinsics or not extrinsics or not depth:
+            return None
+
+        img = images.get(det.image_path)
+        if img is None:
+            return None
+
+        h, w = img.shape[:2]
+        pos = bbox_center_to_world(det.bbox_xyxy_norm, w, h, float(depth), intrinsics, extrinsics)
+        return make_world_transform_16(pos)
+    except Exception:
+        return None

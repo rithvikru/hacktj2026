@@ -14,6 +14,7 @@ class APIDTOModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=_to_camel,
         populate_by_name=True,
+        serialize_by_alias=True,
         extra="forbid",
     )
 
