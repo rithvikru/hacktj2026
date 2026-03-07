@@ -1,7 +1,9 @@
 import Foundation
+import ARKit
 import RoomPlan
 import SwiftData
 import simd
+import UIKit
 
 /// Manages the RoomPlan capture session lifecycle.
 /// Fix 2 applied: no JSONEncoder().encode(room) — CapturedRoom is not Codable.
@@ -13,18 +15,52 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     var detectedObjectCount: Int = 0
     var savedRoomID: UUID?
 
+    private let persistence = RoomPersistenceService()
+    private let frameBundleWriter = FrameBundleWriter()
+    private let minimumKeyframeInterval: TimeInterval = 0.75
+    private let maximumKeyframeInterval: TimeInterval = 2.0
+    private let minimumKeyframeTranslation: Float = 0.12
+    private let minimumKeyframeRotation: Float = 0.20
+
     private var captureView: RoomCaptureView?
     private var capturedRoomData: CapturedRoomData?
+    private var activeRoomID: UUID?
+    private var activeSessionID: UUID?
+    private var activeRoomDirectory: URL?
     private var collectedFrames: [FrameRecord] = []
+    private var captureSamplingTask: Task<Void, Never>?
+    private var lastCapturedAt: Date?
+    private var lastCapturedTransform: simd_float4x4?
+
+    deinit {
+        captureSamplingTask?.cancel()
+    }
 
     func startSession(captureView: RoomCaptureView) {
         self.captureView = captureView
+        resetCaptureState()
+
+        let roomID = UUID()
+        let sessionID = UUID()
+        activeRoomID = roomID
+        activeSessionID = sessionID
+
+        do {
+            activeRoomDirectory = try persistence.createRoomDirectory(roomID: roomID)
+            try persistence.createFrameBundleDirectory(roomID: roomID, sessionID: sessionID)
+        } catch {
+            scanState = .error(error.localizedDescription)
+            return
+        }
+
         let config = RoomCaptureSession.Configuration()
         captureView.captureSession.run(configuration: config)
+        startFrameSampling()
         scanState = .scanning
     }
 
     func stopSession() {
+        stopFrameSampling()
         captureView?.captureSession.stop()
     }
 
@@ -42,6 +78,8 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                                      didEndWith data: CapturedRoomData,
                                      error: Error?) {
         Task { @MainActor in
+            captureCurrentFrame(force: true)
+            stopFrameSampling()
             capturedRoomData = data
             scanState = .processing
         }
@@ -64,22 +102,25 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     // MARK: - Finalize
 
     func finalizeScan(modelContext: ModelContext) async {
-        guard let data = capturedRoomData else { return }
+        guard let data = capturedRoomData,
+              let roomID = activeRoomID,
+              let sessionID = activeSessionID,
+              let roomDir = activeRoomDirectory else { return }
         scanState = .saving
 
         do {
             let builder = RoomBuilder(options: [.beautifyObjects])
             let room = try await builder.capturedRoom(from: data)
-
-            let persistence = RoomPersistenceService()
-            let roomID = UUID()
-            let roomDir = try persistence.createRoomDirectory(roomID: roomID)
             let roomRecord = RoomRecord(id: roomID, name: defaultRoomName())
 
             // Export USDZ (Fix 2: no JSONEncoder — CapturedRoom is not Codable)
             let usdzURL = roomDir.appendingPathComponent("room.usdz")
             try room.export(to: usdzURL, exportOptions: .mesh)
             roomRecord.roomUSDZPath = usdzURL.path
+            if let previewImagePath,
+               let previewImage = UIImage(contentsOfFile: previewImagePath) {
+                roomRecord.previewImagePath = try persistence.savePreviewImage(previewImage, roomID: roomID)
+            }
 
             // Save world map if available
             if let arSession = captureView?.captureSession.arSession {
@@ -91,13 +132,25 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 }
             }
 
-            // Save frame bundle metadata
-            if !collectedFrames.isEmpty {
-                let framesURL = roomDir.appendingPathComponent("frames.json")
-                let framesData = try JSONEncoder().encode(collectedFrames)
-                try framesData.write(to: framesURL)
-                roomRecord.frameBundlePath = framesURL.path
-            }
+            let bundleManifest = FrameBundleManifest(
+                roomID: roomID,
+                sessionID: sessionID,
+                frames: collectedFrames,
+                auxiliaryAssets: collectedFrames.map { frame in
+                    FrameAuxiliaryAssets(
+                        frameID: frame.id,
+                        confidenceMapPath: frame.confidenceMapPath
+                    )
+                },
+                keyframeSelection: currentKeyframeSelection
+            )
+            let bundleURL = persistence.frameBundleManifestURL(for: roomID, sessionID: sessionID)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let bundleData = try encoder.encode(bundleManifest)
+            try bundleData.write(to: bundleURL, options: [.atomic])
+            roomRecord.frameBundlePath = bundleURL.path
 
             modelContext.insert(roomRecord)
             persistCapturedRoom(room, roomID: roomID, roomRecord: roomRecord, modelContext: modelContext)
@@ -115,6 +168,174 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
 
     func collectFrame(_ frame: FrameRecord) {
         collectedFrames.append(frame)
+    }
+
+    private var currentKeyframeSelection: KeyframeSelection {
+        KeyframeSelection(
+            minimumIntervalSeconds: minimumKeyframeInterval,
+            maximumIntervalSeconds: maximumKeyframeInterval,
+            minimumTranslationMeters: minimumKeyframeTranslation,
+            minimumRotationRadians: minimumKeyframeRotation
+        )
+    }
+
+    private var previewImagePath: String? {
+        guard !collectedFrames.isEmpty else { return nil }
+        return collectedFrames[collectedFrames.count / 2].imagePath
+    }
+
+    private func resetCaptureState() {
+        captureSamplingTask?.cancel()
+        captureSamplingTask = nil
+        capturedRoomData = nil
+        activeRoomID = nil
+        activeSessionID = nil
+        activeRoomDirectory = nil
+        collectedFrames.removeAll()
+        lastCapturedAt = nil
+        lastCapturedTransform = nil
+        detectedObjectCount = 0
+        savedRoomID = nil
+    }
+
+    private func startFrameSampling() {
+        captureSamplingTask?.cancel()
+        captureSamplingTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                self.captureCurrentFrame(force: false)
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+        }
+    }
+
+    private func stopFrameSampling() {
+        captureSamplingTask?.cancel()
+        captureSamplingTask = nil
+    }
+
+    private func captureCurrentFrame(force: Bool) {
+        guard force || isActivelyScanning else {
+            return
+        }
+
+        guard let captureView,
+              let roomID = activeRoomID,
+              let sessionID = activeSessionID,
+              let frame = captureView.captureSession.arSession.currentFrame else {
+            return
+        }
+
+        let capturedAt = Date()
+        guard shouldCaptureFrame(frame, capturedAt: capturedAt, force: force) else {
+            return
+        }
+
+        do {
+            let frameID = UUID()
+            let assets = try frameBundleWriter.writeFrameAssets(
+                frame: frame,
+                roomID: roomID,
+                sessionID: sessionID,
+                frameID: frameID,
+                persistence: persistence
+            )
+            let record = FrameRecord(
+                roomID: roomID,
+                sessionID: sessionID,
+                timestamp: capturedAt,
+                imagePath: assets.imagePath,
+                depthPath: assets.depthPath,
+                confidenceMapPath: assets.confidenceMapPath,
+                cameraTransform16: frame.camera.transform.columnMajorArray,
+                intrinsics9: frame.camera.intrinsics.columnMajorArray,
+                trackingState: trackingStateLabel(for: frame.camera.trackingState)
+            )
+            collectFrame(record)
+            lastCapturedAt = capturedAt
+            lastCapturedTransform = frame.camera.transform
+        } catch {
+            stopFrameSampling()
+            scanState = .error(error.localizedDescription)
+        }
+    }
+
+    private var isActivelyScanning: Bool {
+        if case .scanning = scanState {
+            return true
+        }
+        return false
+    }
+
+    private func shouldCaptureFrame(_ frame: ARFrame, capturedAt: Date, force: Bool) -> Bool {
+        if force {
+            return true
+        }
+
+        guard case .normal = frame.camera.trackingState else {
+            return false
+        }
+
+        guard let lastCapturedAt else {
+            return true
+        }
+
+        let elapsed = capturedAt.timeIntervalSince(lastCapturedAt)
+        if elapsed < minimumKeyframeInterval {
+            return false
+        }
+        if elapsed >= maximumKeyframeInterval {
+            return true
+        }
+
+        guard let lastCapturedTransform else {
+            return true
+        }
+
+        let translation = translationDistance(
+            from: lastCapturedTransform,
+            to: frame.camera.transform
+        )
+        let rotation = angularDistance(
+            from: lastCapturedTransform,
+            to: frame.camera.transform
+        )
+        return translation >= minimumKeyframeTranslation || rotation >= minimumKeyframeRotation
+    }
+
+    private func translationDistance(from lhs: simd_float4x4, to rhs: simd_float4x4) -> Float {
+        let left = SIMD3(lhs.columns.3.x, lhs.columns.3.y, lhs.columns.3.z)
+        let right = SIMD3(rhs.columns.3.x, rhs.columns.3.y, rhs.columns.3.z)
+        return simd_length(right - left)
+    }
+
+    private func angularDistance(from lhs: simd_float4x4, to rhs: simd_float4x4) -> Float {
+        let lhsRotation = simd_normalize(simd_quatf(lhs))
+        let rhsRotation = simd_normalize(simd_quatf(rhs))
+        let dotProduct = min(1.0, max(-1.0, abs(simd_dot(lhsRotation.vector, rhsRotation.vector))))
+        return 2 * acos(dotProduct)
+    }
+
+    private func trackingStateLabel(for trackingState: ARCamera.TrackingState) -> String {
+        switch trackingState {
+        case .normal:
+            return "normal"
+        case .notAvailable:
+            return "not_available"
+        case .limited(let reason):
+            switch reason {
+            case .initializing:
+                return "limited_initializing"
+            case .relocalizing:
+                return "limited_relocalizing"
+            case .excessiveMotion:
+                return "limited_excessive_motion"
+            case .insufficientFeatures:
+                return "limited_insufficient_features"
+            @unknown default:
+                return "limited_unknown"
+            }
+        }
     }
 
     private func defaultRoomName() -> String {
