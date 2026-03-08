@@ -50,7 +50,7 @@ extension LocationService: @preconcurrency CLLocationManagerDelegate {
         Task { @MainActor in
             self.authorizationStatus = status
             if status == .authorizedWhenInUse || status == .authorizedAlways {
-                manager.startUpdatingLocation()
+                self.startUpdating()
             }
         }
     }
