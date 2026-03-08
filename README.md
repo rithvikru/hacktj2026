@@ -1,5 +1,9 @@
 # hacktj2026
 
+Read this first:
+
+- `docs/current-system-overview.md`
+
 Source-of-truth implementation spec:
 
 - `docs/technical-implementation-spec.md`
