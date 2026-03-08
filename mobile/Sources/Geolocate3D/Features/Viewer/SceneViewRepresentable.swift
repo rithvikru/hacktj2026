@@ -103,6 +103,19 @@ struct SceneViewRepresentable: UIViewRepresentable {
     }
 
     private func loadBaseScene() -> SCNScene {
+        if DemoRoomCatalog.isDemoRoom(roomID) {
+            let scene = DemoRoomCatalog.makeScene()
+            let scaffoldGroup = SCNNode()
+            scaffoldGroup.name = Self.scaffoldGroupName
+
+            while let child = scene.rootNode.childNodes.first {
+                child.removeFromParentNode()
+                scaffoldGroup.addChildNode(child)
+            }
+            scene.rootNode.addChildNode(scaffoldGroup)
+            return scene
+        }
+
         let persistence = RoomPersistenceService()
         let url = persistence.usdzURL(for: roomID)
 
@@ -466,14 +479,23 @@ struct SceneViewRepresentable: UIViewRepresentable {
             "glasses",
             "charger",
             "tv remote",
+            "bag",
             "backpack",
             "book",
             "notebook",
+            "paper",
+            "pen",
+            "clipboard",
             "bottle",
+            "water bottle",
             "can",
             "mug",
             "bowl",
             "plate",
+            "box",
+            "tissue box",
+            "shoe",
+            "tv",
         ]
         guard smallObjectLabels.contains(label) else { return false }
         let supportType = obj.supportRelation?.type?.lowercased()

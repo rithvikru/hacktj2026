@@ -9,6 +9,7 @@ from PIL import Image
 from reconstruction.objects.semantic_scene import (
     build_semantic_scene,
     _infer_support_relation,
+    _limit_detections_for_semantics,
     _limit_small_object_payloads,
     _snap_payload_to_support,
 )
@@ -233,3 +234,27 @@ def test_limit_small_object_payloads_caps_only_portable_objects():
 
     assert sum(1 for item in limited if item["label"] == "desk") == 1
     assert sum(1 for item in limited if item["label"] == "bottle") == 10
+
+
+def test_limit_detections_for_semantics_preserves_label_diversity():
+    class Detection:
+        def __init__(self, confidence: float, label: str):
+            self.confidence = confidence
+            self.label = label
+
+    detections = [
+        Detection(0.95, "airpods case"),
+        Detection(0.94, "airpods case"),
+        Detection(0.93, "airpods case"),
+        Detection(0.70, "laptop"),
+        Detection(0.69, "water bottle"),
+        Detection(0.68, "backpack"),
+    ]
+
+    limited = _limit_detections_for_semantics(detections)
+
+    labels = [item.label for item in limited]
+    assert labels.count("airpods case") == 2
+    assert "laptop" in labels
+    assert "water bottle" in labels
+    assert "backpack" in labels

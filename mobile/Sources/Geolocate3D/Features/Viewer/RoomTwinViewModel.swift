@@ -103,6 +103,14 @@ final class RoomTwinViewModel {
     }
 
     func loadSemanticScene(roomID: UUID, backendClient: BackendClient) async {
+        if DemoRoomCatalog.isDemoRoom(roomID) {
+            let response = DemoRoomCatalog.semanticScene()
+            semanticScene = response
+            semanticObjects = response.objects
+            statusMessage = "Demo room ready"
+            return
+        }
+
         statusMessage = "Building semantic objects"
         do {
             let response = try await backendClient.fetchSemanticScene(roomID: roomID)
@@ -150,6 +158,18 @@ final class RoomTwinViewModel {
         reconstructionStatus = room.reconstructionStatus
         statusMessage = "Preparing room geometry"
 
+        if DemoRoomCatalog.isDemoRoom(roomID) {
+            reconstructionStatus = .complete
+            denseAssetKind = nil
+            denseRenderer = nil
+            densePhotorealReady = false
+            denseAssetURL = nil
+            denseAssetRemoteURL = nil
+            statusMessage = "Demo room ready"
+            await loadSemanticScene(roomID: roomID, backendClient: backendClient)
+            return
+        }
+
         if let localAssetURL = resolveLocalAssetURL(from: room.denseAssetPath) {
             denseAssetURL = localAssetURL
         }
@@ -162,6 +182,7 @@ final class RoomTwinViewModel {
     }
 
     func startAssetPolling(modelContext: ModelContext, backendClient: BackendClient) {
+        guard !DemoRoomCatalog.isDemoRoom(roomID) else { return }
         assetPollingTask?.cancel()
         assetPollingTask = Task { [weak self] in
             guard let self else { return }
@@ -187,6 +208,7 @@ final class RoomTwinViewModel {
     }
 
     func refreshAssets(modelContext: ModelContext, backendClient: BackendClient) async {
+        guard !DemoRoomCatalog.isDemoRoom(roomID) else { return }
         var descriptor = FetchDescriptor<RoomRecord>(
             predicate: #Predicate { $0.id == roomID }
         )

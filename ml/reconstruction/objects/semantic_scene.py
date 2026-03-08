@@ -26,7 +26,7 @@ from reconstruction.da3.run_pipeline import (
 logger = logging.getLogger(__name__)
 
 SEMANTIC_OBJECT_FRAME_LIMIT = int(os.getenv("SEMANTIC_OBJECT_FRAME_LIMIT", "12"))
-SEMANTIC_MAX_DETECTIONS_PER_FRAME = int(os.getenv("SEMANTIC_MAX_DETECTIONS_PER_FRAME", "8"))
+SEMANTIC_MAX_DETECTIONS_PER_FRAME = int(os.getenv("SEMANTIC_MAX_DETECTIONS_PER_FRAME", "12"))
 SEMANTIC_MAX_POINTS_PER_OBJECT_VIEW = int(os.getenv("SEMANTIC_MAX_POINTS_PER_OBJECT_VIEW", "1400"))
 SEMANTIC_CLUSTER_RADIUS_METERS = float(os.getenv("SEMANTIC_CLUSTER_RADIUS_METERS", "0.28"))
 SEMANTIC_SMALL_OBJECT_CLUSTER_RADIUS_METERS = float(
@@ -59,8 +59,6 @@ SUPPORT_SURFACE_LABELS = {
     "shelf",
     "nightstand",
     "dresser",
-    "bed",
-    "couch",
 }
 
 PRIMARY_SMALL_OBJECT_SUPPORT_LABELS = {
@@ -360,9 +358,7 @@ def _extract_object_views(
 
     views: list[ObjectView] = []
     for image_path, image_detections in grouped.items():
-        image_detections = sorted(image_detections, key=lambda item: item.confidence, reverse=True)[
-            :SEMANTIC_MAX_DETECTIONS_PER_FRAME
-        ]
+        image_detections = _limit_detections_for_semantics(image_detections)
         image = image_cache.setdefault(image_path, np.array(Image.open(image_path).convert("RGB")))
         try:
             masks = segment(image, [item.bbox_xyxy_norm for item in image_detections])
@@ -711,6 +707,21 @@ def _deduplicate_payloads(objects_payload: list[dict[str, Any]]) -> list[dict[st
         if not duplicate:
             deduped.append(payload)
     return deduped
+
+
+def _limit_detections_for_semantics(detections: list[Any]) -> list[Any]:
+    ordered = sorted(detections, key=lambda item: float(item.confidence), reverse=True)
+    family_counts: dict[str, int] = {}
+    limited: list[Any] = []
+    for detection in ordered:
+        family = str(getattr(detection, "label", "")).strip().lower()
+        if family_counts.get(family, 0) >= 2:
+            continue
+        limited.append(detection)
+        family_counts[family] = family_counts.get(family, 0) + 1
+        if len(limited) >= SEMANTIC_MAX_DETECTIONS_PER_FRAME:
+            break
+    return limited
 
 
 def _limit_small_object_payloads(objects_payload: list[dict[str, Any]]) -> list[dict[str, Any]]:

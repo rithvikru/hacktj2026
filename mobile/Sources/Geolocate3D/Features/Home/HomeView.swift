@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \RoomRecord.updatedAt, order: .reverse) private var rooms: [RoomRecord]
     @State private var viewModel = HomeViewModel()
+    @State private var hasSeededDemoRoom = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -54,6 +55,11 @@ struct HomeView: View {
             }
             .padding(.trailing, 24)
             .padding(.bottom, 24)
+        }
+        .task {
+            guard !hasSeededDemoRoom else { return }
+            hasSeededDemoRoom = true
+            DemoRoomCatalog.seedIfNeeded(modelContext: modelContext)
         }
     }
 }

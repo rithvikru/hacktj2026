@@ -960,6 +960,24 @@ struct SupportRelationDTO: Decodable, Sendable {
         guard let parentLabel, let relationType else { return "" }
         return "\(relationType) \(parentLabel)"
     }
+
+    init(
+        type: String?,
+        supportObjectID: String?,
+        supportLabel: String?,
+        supportHeightY: Float?,
+        parentID: String?,
+        parentLabel: String?,
+        relationType: String?
+    ) {
+        self.type = type
+        self.supportObjectID = supportObjectID
+        self.supportLabel = supportLabel
+        self.supportHeightY = supportHeightY
+        self.parentID = parentID
+        self.parentLabel = parentLabel
+        self.relationType = relationType
+    }
 }
 
 struct SemanticSceneObject: Decodable, Identifiable, Sendable {
@@ -1079,6 +1097,48 @@ struct SemanticSceneObject: Decodable, Identifiable, Sendable {
             try container.decodeIfPresent(SupportRelationDTO.self, forKey: .supportRelation) ??
             (try container.decodeIfPresent(SupportRelationDTO.self, forKey: .support_relation))
     }
+
+    init(
+        id: String,
+        label: String,
+        confidence: Double,
+        worldTransform16: [Float]?,
+        centerXYZ: [Float]?,
+        extentXYZ: [Float]?,
+        baseAnchorXYZ: [Float]?,
+        supportAnchorXYZ: [Float]?,
+        supportNormalXYZ: [Float]?,
+        principalAxisXYZ: [Float]?,
+        yawRadians: Float?,
+        footprintXYZ: [[Float]]?,
+        meshKind: String?,
+        meshAssetURL: String?,
+        pointCount: Int?,
+        supportingViewCount: Int?,
+        maskSupportedViewCount: Int?,
+        bboxFallbackViewCount: Int?,
+        supportRelation: SupportRelationDTO?
+    ) {
+        self.id = id
+        self.label = label
+        self.confidence = confidence
+        self.worldTransform16 = worldTransform16
+        self.centerXYZ = centerXYZ
+        self.extentXYZ = extentXYZ
+        self.baseAnchorXYZ = baseAnchorXYZ
+        self.supportAnchorXYZ = supportAnchorXYZ
+        self.supportNormalXYZ = supportNormalXYZ
+        self.principalAxisXYZ = principalAxisXYZ
+        self.yawRadians = yawRadians
+        self.footprintXYZ = footprintXYZ
+        self.meshKind = meshKind
+        self.meshAssetURL = meshAssetURL
+        self.pointCount = pointCount
+        self.supportingViewCount = supportingViewCount
+        self.maskSupportedViewCount = maskSupportedViewCount
+        self.bboxFallbackViewCount = bboxFallbackViewCount
+        self.supportRelation = supportRelation
+    }
 }
 
 struct SemanticSceneResponse: Decodable, Sendable {
@@ -1115,6 +1175,13 @@ struct SemanticSceneResponse: Decodable, Sendable {
         generatedAt =
             try container.decodeIfPresent(String.self, forKey: .generatedAt) ??
             (try container.decodeIfPresent(String.self, forKey: .generated_at))
+    }
+
+    init(objects: [SemanticSceneObject], roomID: String?, sceneVersion: Int?, generatedAt: String?) {
+        self.objects = objects
+        self.roomID = roomID
+        self.sceneVersion = sceneVersion
+        self.generatedAt = generatedAt
     }
 }
 
