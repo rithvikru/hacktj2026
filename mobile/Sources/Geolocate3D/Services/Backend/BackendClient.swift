@@ -184,6 +184,10 @@ final class BackendClient {
         return destinationURL
     }
 
+    func absoluteAssetURL(for assetPath: String) throws -> URL {
+        try resolvedAssetURL(for: assetPath)
+    }
+
     func checkConnection() async {
         do {
             let url = baseURL.appendingPathComponent("healthz")
@@ -192,6 +196,29 @@ final class BackendClient {
         } catch {
             isConnected = false
         }
+    }
+
+    func fetchSemanticScene(roomID: UUID) async throws -> SemanticSceneResponse {
+        let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/semantic-objects")
+        let (data, response) = try await session.data(from: url)
+        try validateHTTPResponse(response, data: data)
+        return try decoder.decode(SemanticSceneResponse.self, from: data)
+    }
+
+    func downloadSemanticObjectMesh(from assetPath: String, suggestedFileName: String?, into directory: URL) async throws -> URL {
+        let resolvedURL = try resolvedAssetURL(for: assetPath)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileName = suggestedFileName ?? resolvedURL.lastPathComponent
+        let destinationURL = directory.appendingPathComponent(fileName)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            return destinationURL
+        }
+
+        let (data, _) = try await session.data(from: resolvedURL)
+        try data.write(to: destinationURL, options: [.atomic])
+        return destinationURL
     }
 
     func liveScanDetect(imageURL: URL, labels: [String], maxCandidates: Int = 6) async throws -> [LiveScanDetection] {
@@ -417,6 +444,12 @@ struct ReconstructionAssetsResponse: Decodable {
     let denseAssetURL: String?
     let pointCloudURL: String?
     let frameBundleURL: String?
+    let denseAssetKind: String?
+    let denseRenderer: String?
+    let densePhotorealReady: Bool
+    let denseDatasetManifestURL: String?
+    let denseTransformsURL: String?
+    let denseDiagnosticsURL: String?
 
     private enum CodingKeys: String, CodingKey {
         case status
@@ -430,6 +463,18 @@ struct ReconstructionAssetsResponse: Decodable {
         case point_cloud_url
         case frameBundleURL
         case frame_bundle_url
+        case denseAssetKind
+        case dense_asset_kind
+        case denseRenderer
+        case dense_renderer
+        case densePhotorealReady
+        case dense_photoreal_ready
+        case denseDatasetManifestURL
+        case dense_dataset_manifest_url
+        case denseTransformsURL
+        case dense_transforms_url
+        case denseDiagnosticsURL
+        case dense_diagnostics_url
     }
 
     init(from decoder: Decoder) throws {
@@ -450,6 +495,25 @@ struct ReconstructionAssetsResponse: Decodable {
         frameBundleURL =
             try container.decodeIfPresent(String.self, forKey: .frameBundleURL) ??
             (try container.decodeIfPresent(String.self, forKey: .frame_bundle_url))
+        denseAssetKind =
+            try container.decodeIfPresent(String.self, forKey: .denseAssetKind) ??
+            (try container.decodeIfPresent(String.self, forKey: .dense_asset_kind))
+        denseRenderer =
+            try container.decodeIfPresent(String.self, forKey: .denseRenderer) ??
+            (try container.decodeIfPresent(String.self, forKey: .dense_renderer))
+        densePhotorealReady =
+            try container.decodeIfPresent(Bool.self, forKey: .densePhotorealReady) ??
+            (try container.decodeIfPresent(Bool.self, forKey: .dense_photoreal_ready)) ??
+            false
+        denseDatasetManifestURL =
+            try container.decodeIfPresent(String.self, forKey: .denseDatasetManifestURL) ??
+            (try container.decodeIfPresent(String.self, forKey: .dense_dataset_manifest_url))
+        denseTransformsURL =
+            try container.decodeIfPresent(String.self, forKey: .denseTransformsURL) ??
+            (try container.decodeIfPresent(String.self, forKey: .dense_transforms_url))
+        denseDiagnosticsURL =
+            try container.decodeIfPresent(String.self, forKey: .denseDiagnosticsURL) ??
+            (try container.decodeIfPresent(String.self, forKey: .dense_diagnostics_url))
     }
 }
 
@@ -813,6 +877,187 @@ private struct OpenVocabCandidate: Decodable {
             (try container.decodeIfPresent([Float].self, forKey: .world_transform)) ??
             (try container.decodeIfPresent([Float].self, forKey: .worldTransform16)) ??
             (try container.decodeIfPresent([Float].self, forKey: .world_transform16))
+    }
+}
+
+// MARK: - Semantic Scene DTOs
+
+struct SupportRelationDTO: Decodable, Sendable {
+    let parentID: String?
+    let parentLabel: String?
+    let relationType: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case parentID
+        case parent_id
+        case parentLabel
+        case parent_label
+        case relationType
+        case relation_type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        parentID =
+            try container.decodeIfPresent(String.self, forKey: .parentID) ??
+            (try container.decodeIfPresent(String.self, forKey: .parent_id))
+        parentLabel =
+            try container.decodeIfPresent(String.self, forKey: .parentLabel) ??
+            (try container.decodeIfPresent(String.self, forKey: .parent_label))
+        relationType =
+            try container.decodeIfPresent(String.self, forKey: .relationType) ??
+            (try container.decodeIfPresent(String.self, forKey: .relation_type))
+    }
+
+    var displayDescription: String {
+        guard let parentLabel, let relationType else { return "" }
+        return "\(relationType) \(parentLabel)"
+    }
+}
+
+struct SemanticSceneObject: Decodable, Identifiable, Sendable {
+    let id: String
+    let label: String
+    let confidence: Double
+    let worldTransform16: [Float]?
+    let centerXYZ: [Float]?
+    let extentXYZ: [Float]?
+    let baseAnchorXYZ: [Float]?
+    let supportAnchorXYZ: [Float]?
+    let supportNormalXYZ: [Float]?
+    let principalAxisXYZ: [Float]?
+    let yawRadians: Float?
+    let footprintXYZ: [[Float]]?
+    let meshKind: String?
+    let meshAssetURL: String?
+    let pointCount: Int?
+    let supportingViewCount: Int?
+    let maskSupportedViews: [String]?
+    let bboxFallbackViews: [String]?
+    let supportRelation: SupportRelationDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case label
+        case confidence
+        case worldTransform16
+        case world_transform16
+        case centerXYZ
+        case center_xyz
+        case extentXYZ
+        case extent_xyz
+        case baseAnchorXYZ
+        case base_anchor_xyz
+        case supportAnchorXYZ
+        case support_anchor_xyz
+        case supportNormalXYZ
+        case support_normal_xyz
+        case principalAxisXYZ
+        case principal_axis_xyz
+        case yawRadians
+        case yaw_radians
+        case footprintXYZ
+        case footprint_xyz
+        case meshKind
+        case mesh_kind
+        case meshAssetURL
+        case mesh_asset_url
+        case pointCount
+        case point_count
+        case supportingViewCount
+        case supporting_view_count
+        case maskSupportedViews
+        case mask_supported_views
+        case bboxFallbackViews
+        case bbox_fallback_views
+        case supportRelation
+        case support_relation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? "object"
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0
+        worldTransform16 =
+            try container.decodeIfPresent([Float].self, forKey: .worldTransform16) ??
+            (try container.decodeIfPresent([Float].self, forKey: .world_transform16))
+        centerXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .centerXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .center_xyz))
+        extentXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .extentXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .extent_xyz))
+        baseAnchorXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .baseAnchorXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .base_anchor_xyz))
+        supportAnchorXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .supportAnchorXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .support_anchor_xyz))
+        supportNormalXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .supportNormalXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .support_normal_xyz))
+        principalAxisXYZ =
+            try container.decodeIfPresent([Float].self, forKey: .principalAxisXYZ) ??
+            (try container.decodeIfPresent([Float].self, forKey: .principal_axis_xyz))
+        yawRadians =
+            try container.decodeIfPresent(Float.self, forKey: .yawRadians) ??
+            (try container.decodeIfPresent(Float.self, forKey: .yaw_radians))
+        footprintXYZ =
+            try container.decodeIfPresent([[Float]].self, forKey: .footprintXYZ) ??
+            (try container.decodeIfPresent([[Float]].self, forKey: .footprint_xyz))
+        meshKind =
+            try container.decodeIfPresent(String.self, forKey: .meshKind) ??
+            (try container.decodeIfPresent(String.self, forKey: .mesh_kind))
+        meshAssetURL =
+            try container.decodeIfPresent(String.self, forKey: .meshAssetURL) ??
+            (try container.decodeIfPresent(String.self, forKey: .mesh_asset_url))
+        pointCount =
+            try container.decodeIfPresent(Int.self, forKey: .pointCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .point_count))
+        supportingViewCount =
+            try container.decodeIfPresent(Int.self, forKey: .supportingViewCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .supporting_view_count))
+        maskSupportedViews =
+            try container.decodeIfPresent([String].self, forKey: .maskSupportedViews) ??
+            (try container.decodeIfPresent([String].self, forKey: .mask_supported_views))
+        bboxFallbackViews =
+            try container.decodeIfPresent([String].self, forKey: .bboxFallbackViews) ??
+            (try container.decodeIfPresent([String].self, forKey: .bbox_fallback_views))
+        supportRelation =
+            try container.decodeIfPresent(SupportRelationDTO.self, forKey: .supportRelation) ??
+            (try container.decodeIfPresent(SupportRelationDTO.self, forKey: .support_relation))
+    }
+}
+
+struct SemanticSceneResponse: Decodable, Sendable {
+    let objects: [SemanticSceneObject]
+    let roomID: String?
+    let sceneVersion: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case objects
+        case semanticObjects
+        case semantic_objects
+        case roomID
+        case room_id
+        case sceneVersion
+        case scene_version
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        objects =
+            try container.decodeIfPresent([SemanticSceneObject].self, forKey: .objects) ??
+            (try container.decodeIfPresent([SemanticSceneObject].self, forKey: .semanticObjects)) ??
+            (try container.decodeIfPresent([SemanticSceneObject].self, forKey: .semantic_objects)) ??
+            []
+        roomID =
+            try container.decodeIfPresent(String.self, forKey: .roomID) ??
+            (try container.decodeIfPresent(String.self, forKey: .room_id))
+        sceneVersion =
+            try container.decodeIfPresent(String.self, forKey: .sceneVersion) ??
+            (try container.decodeIfPresent(String.self, forKey: .scene_version))
     }
 }
 

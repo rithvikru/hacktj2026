@@ -2,22 +2,26 @@
 import SwiftUI
 
 extension Color {
-    // Backgrounds — true black for OLED + depth layers
-    static let spaceBlack       = Color(red: 0.00, green: 0.00, blue: 0.00) // #000000
-    static let obsidian         = Color(red: 0.04, green: 0.04, blue: 0.06) // #0A0A0F
-    static let voidGray         = Color(red: 0.08, green: 0.08, blue: 0.12) // #14141F
+    // Backgrounds — refined dark grays for depth, not pure black
+    static let spaceBlack       = Color(red: 0.06, green: 0.06, blue: 0.07) // #0F0F12
+    static let obsidian         = Color(red: 0.09, green: 0.09, blue: 0.11) // #17171C
+    static let voidGray         = Color(red: 0.13, green: 0.13, blue: 0.16) // #212128
 
-    // Spatial Accents — luminous, high-contrast on black
-    static let spatialCyan      = Color(red: 0.00, green: 0.96, blue: 1.00) // #00F5FF
-    static let signalMagenta    = Color(red: 1.00, green: 0.00, blue: 0.80) // #FF00CC
-    static let confirmGreen     = Color(red: 0.22, green: 1.00, blue: 0.08) // #39FF14
-    static let warningAmber     = Color(red: 1.00, green: 0.75, blue: 0.00) // #FFBF00
-    static let inferenceViolet  = Color(red: 0.55, green: 0.20, blue: 1.00) // #8C33FF
+    // Spatial Accents — sophisticated, muted tones
+    static let spatialCyan      = Color(red: 0.30, green: 0.68, blue: 0.82) // #4DAEД1 — muted teal
+    static let signalMagenta    = Color(red: 0.82, green: 0.35, blue: 0.55) // #D1598C — soft rose
+    static let confirmGreen     = Color(red: 0.35, green: 0.78, blue: 0.55) // #59C78C — sage green
+    static let warningAmber     = Color(red: 0.92, green: 0.72, blue: 0.30) // #EBB84D — warm amber
+    static let inferenceViolet  = Color(red: 0.55, green: 0.45, blue: 0.85) // #8C73D9 — soft violet
 
-    // Surface materials — translucent layers
-    static let glassWhite       = Color.white.opacity(0.06)
-    static let glassEdge        = Color.white.opacity(0.12)
-    static let dimLabel         = Color.white.opacity(0.5)
+    // Surface materials — subtle translucent layers
+    static let glassWhite       = Color.white.opacity(0.05)
+    static let glassEdge        = Color.white.opacity(0.08)
+    static let dimLabel         = Color.white.opacity(0.45)
+
+    // Elevated surfaces
+    static let elevatedSurface  = Color(red: 0.15, green: 0.15, blue: 0.18) // #26262E
+    static let cardBackground   = Color(red: 0.11, green: 0.11, blue: 0.14) // #1C1C24
 }
 
 extension ShapeStyle where Self == Color {
@@ -32,4 +36,6 @@ extension ShapeStyle where Self == Color {
     static var glassWhite: Color { .glassWhite }
     static var glassEdge: Color { .glassEdge }
     static var dimLabel: Color { .dimLabel }
+    static var elevatedSurface: Color { .elevatedSurface }
+    static var cardBackground: Color { .cardBackground }
 }

@@ -10,27 +10,29 @@ struct ScanCompletionSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.confirmGreen)
+            VStack(spacing: 28) {
+                VStack(spacing: 16) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundStyle(.confirmGreen)
 
-                Text("Room Captured")
-                    .font(SpatialFont.title)
-                    .foregroundStyle(.white)
+                    Text("Room Captured")
+                        .font(SpatialFont.title2)
+                        .foregroundStyle(.white)
 
-                Text("Name your space to save it.")
-                    .font(SpatialFont.subheadline)
-                    .foregroundStyle(.dimLabel)
+                    Text("Give your space a name to save it.")
+                        .font(SpatialFont.subheadline)
+                        .foregroundStyle(.dimLabel)
+                }
 
                 TextField("Living Room", text: $roomName)
                     .font(SpatialFont.body)
                     .foregroundStyle(.white)
                     .padding(16)
-                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(Color.elevatedSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
                     )
 
                 Button {
@@ -38,9 +40,10 @@ struct ScanCompletionSheet: View {
                 } label: {
                     if isSaving {
                         ProgressView()
-                            .tint(.black)
+                            .tint(.white)
                     } else {
                         Text("Save")
+                            .frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(SpatialButtonStyle())
@@ -49,7 +52,7 @@ struct ScanCompletionSheet: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.obsidian)
+            .background(Color.spaceBlack)
             .navigationTitle("Save Room")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -13,6 +13,12 @@ struct SceneViewRepresentable: UIViewRepresentable {
     let showHeatmap: Bool
     let showDense: Bool
     let denseAssetURL: URL?
+    let semanticObjects: [SemanticSceneObject]
+    let semanticMeshLocalURLs: [String: URL]
+    let selectedSemanticObjectID: String?
+    let showSemanticObjects: Bool
+    let viewerMode: ViewerMode
+    let onSemanticObjectTapped: ((String) -> Void)?
     /// Binding updated each frame with projected 2D positions for SwiftUI annotation overlay.
     @Binding var projectedPositions: [UUID: CGPoint]
 
@@ -20,7 +26,8 @@ struct SceneViewRepresentable: UIViewRepresentable {
     private static let observationGroupName = "observationPins"
     private static let heatmapGroupName = "heatmapNodes"
     private static let denseGroupName = "densePoints"
-    private static let maxDensePointCount = 1_200
+    private static let semanticGroupName = "semanticObjectGroup"
+    private static let maxDensePointCount = 8_000
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -36,23 +43,60 @@ struct SceneViewRepresentable: UIViewRepresentable {
         let scene = loadBaseScene()
         scnView.scene = scene
         rebuildDynamicContent(in: scene.rootNode)
+        context.coordinator.cacheSnapshot(
+            observations: observations,
+            hypotheses: hypotheses,
+            showDense: showDense,
+            denseAssetURL: denseAssetURL,
+            semanticObjects: semanticObjects,
+            selectedSemanticObjectID: selectedSemanticObjectID,
+            showSemanticObjects: showSemanticObjects,
+            viewerMode: viewerMode
+        )
         updateVisibility(in: scene.rootNode)
 
         context.coordinator.scnView = scnView
         context.coordinator.observations = observations
         context.coordinator.projectedPositions = $projectedPositions
         context.coordinator.showObjects = showObjects
+        context.coordinator.onSemanticObjectTapped = onSemanticObjectTapped
         startProjectionTimer(context: context)
+
+        // Add tap gesture for semantic object selection
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        scnView.addGestureRecognizer(tapGesture)
 
         return scnView
     }
 
     func updateUIView(_ scnView: SCNView, context: Context) {
         guard let rootNode = scnView.scene?.rootNode else { return }
-        rebuildDynamicContent(in: rootNode)
+        if context.coordinator.needsRebuild(
+            observations: observations,
+            hypotheses: hypotheses,
+            showDense: showDense,
+            denseAssetURL: denseAssetURL,
+            semanticObjects: semanticObjects,
+            selectedSemanticObjectID: selectedSemanticObjectID,
+            showSemanticObjects: showSemanticObjects,
+            viewerMode: viewerMode
+        ) {
+            rebuildDynamicContent(in: rootNode)
+            context.coordinator.cacheSnapshot(
+                observations: observations,
+                hypotheses: hypotheses,
+                showDense: showDense,
+                denseAssetURL: denseAssetURL,
+                semanticObjects: semanticObjects,
+                selectedSemanticObjectID: selectedSemanticObjectID,
+                showSemanticObjects: showSemanticObjects,
+                viewerMode: viewerMode
+            )
+        }
         updateVisibility(in: rootNode)
         context.coordinator.observations = observations
         context.coordinator.showObjects = showObjects
+        context.coordinator.onSemanticObjectTapped = onSemanticObjectTapped
     }
 
     private func loadBaseScene() -> SCNScene {
@@ -75,10 +119,19 @@ struct SceneViewRepresentable: UIViewRepresentable {
         rootNode.childNode(withName: Self.observationGroupName, recursively: false)?.removeFromParentNode()
         rootNode.childNode(withName: Self.heatmapGroupName, recursively: false)?.removeFromParentNode()
         rootNode.childNode(withName: Self.denseGroupName, recursively: false)?.removeFromParentNode()
+        rootNode.childNode(withName: Self.semanticGroupName, recursively: false)?.removeFromParentNode()
 
         addObservationPins(to: rootNode)
         addHeatmapNodes(to: rootNode)
         addDenseNodes(to: rootNode)
+        addSemanticObjectNodes(to: rootNode)
+
+        // When semantic objects are loaded, reduce scaffold to ghost shell
+        if !semanticObjects.isEmpty && showSemanticObjects {
+            applyGhostShellToScaffold(in: rootNode)
+        } else {
+            restoreScaffoldMaterials(in: rootNode)
+        }
     }
 
     private func updateVisibility(in rootNode: SCNNode) {
@@ -86,6 +139,161 @@ struct SceneViewRepresentable: UIViewRepresentable {
         rootNode.childNode(withName: Self.observationGroupName, recursively: false)?.isHidden = !showObjects
         rootNode.childNode(withName: Self.heatmapGroupName, recursively: false)?.isHidden = !showHeatmap
         rootNode.childNode(withName: Self.denseGroupName, recursively: false)?.isHidden = !showDense
+        rootNode.childNode(withName: Self.semanticGroupName, recursively: false)?.isHidden = !showSemanticObjects
+    }
+
+    // MARK: - Ghost Shell for Scaffold
+
+    private func applyGhostShellToScaffold(in rootNode: SCNNode) {
+        guard let scaffoldGroup = rootNode.childNode(withName: Self.scaffoldGroupName, recursively: false) else { return }
+        applyGhostMaterialRecursively(to: scaffoldGroup)
+    }
+
+    private func applyGhostMaterialRecursively(to node: SCNNode) {
+        if let geometry = node.geometry {
+            let ghostMaterial = SCNMaterial()
+            ghostMaterial.diffuse.contents = UIColor(white: 0.45, alpha: 0.12)
+            ghostMaterial.lightingModel = .constant
+            ghostMaterial.isDoubleSided = true
+            ghostMaterial.transparency = 0.12
+            ghostMaterial.writesToDepthBuffer = true
+            ghostMaterial.readsFromDepthBuffer = true
+            geometry.materials = [ghostMaterial]
+        }
+        for child in node.childNodes {
+            applyGhostMaterialRecursively(to: child)
+        }
+    }
+
+    private func restoreScaffoldMaterials(in rootNode: SCNNode) {
+        // No-op: scaffold loaded from USDZ retains its original materials
+        // when no semantic objects are present.
+    }
+
+    // MARK: - Semantic Object Nodes
+
+    private func addSemanticObjectNodes(to rootNode: SCNNode) {
+        let group = SCNNode()
+        group.name = Self.semanticGroupName
+
+        for obj in semanticObjects {
+            // Hide low-confidence objects unless they're selected
+            if obj.confidence < 0.3 && obj.id != selectedSemanticObjectID {
+                continue
+            }
+
+            let objectNode: SCNNode
+
+            if let localURL = semanticMeshLocalURLs[obj.id],
+               let meshScene = try? SCNScene(url: localURL, options: [.checkConsistency: false]) {
+                // Load .obj mesh
+                objectNode = SCNNode()
+                objectNode.name = "semantic_\(obj.id)"
+                for child in meshScene.rootNode.childNodes {
+                    let clone = child.clone()
+                    objectNode.addChildNode(clone)
+                }
+                // Apply category-tinted material
+                let tintMaterial = categoryTintedMaterial(for: obj)
+                applyMaterialRecursively(tintMaterial, to: objectNode)
+            } else {
+                // Fallback: oriented box using extent_xyz
+                objectNode = makeFallbackBox(for: obj)
+            }
+
+            // Place using world_transform16
+            if let transform16 = obj.worldTransform16, let matrix = simd_float4x4.fromArray(transform16) {
+                objectNode.simdTransform = matrix
+            } else if let center = obj.centerXYZ, center.count == 3 {
+                objectNode.position = SCNVector3(center[0], center[1], center[2])
+            }
+
+            // Selection highlight
+            if obj.id == selectedSemanticObjectID {
+                applySelectionHighlight(to: objectNode)
+            }
+
+            group.addChildNode(objectNode)
+        }
+
+        rootNode.addChildNode(group)
+    }
+
+    private func makeFallbackBox(for obj: SemanticSceneObject) -> SCNNode {
+        let extent = obj.extentXYZ ?? [0.15, 0.15, 0.15]
+        let width = CGFloat(extent.count > 0 ? extent[0] : 0.15)
+        let height = CGFloat(extent.count > 1 ? extent[1] : 0.15)
+        let length = CGFloat(extent.count > 2 ? extent[2] : 0.15)
+
+        let box = SCNBox(width: width, height: height, length: length, chamferRadius: 0.005)
+        let material = categoryTintedMaterial(for: obj)
+        material.transparency = 0.4
+        box.materials = [material]
+
+        let node = SCNNode(geometry: box)
+        node.name = "semantic_\(obj.id)"
+        return node
+    }
+
+    private func categoryTintedMaterial(for obj: SemanticSceneObject) -> SCNMaterial {
+        let material = SCNMaterial()
+        material.lightingModel = .physicallyBased
+        material.isDoubleSided = true
+        material.metalness.contents = 0.1
+        material.roughness.contents = 0.7
+
+        let label = obj.label.lowercased()
+        let color: UIColor
+        switch label {
+        case let l where l.contains("chair") || l.contains("sofa") || l.contains("couch") || l.contains("seat"):
+            color = UIColor(red: 0.35, green: 0.55, blue: 0.75, alpha: 0.65)
+        case let l where l.contains("table") || l.contains("desk") || l.contains("counter"):
+            color = UIColor(red: 0.55, green: 0.45, blue: 0.35, alpha: 0.65)
+        case let l where l.contains("bed") || l.contains("pillow") || l.contains("mattress"):
+            color = UIColor(red: 0.55, green: 0.40, blue: 0.60, alpha: 0.65)
+        case let l where l.contains("door") || l.contains("window"):
+            color = UIColor(red: 0.45, green: 0.65, blue: 0.55, alpha: 0.55)
+        case let l where l.contains("light") || l.contains("lamp"):
+            color = UIColor(red: 0.85, green: 0.75, blue: 0.45, alpha: 0.65)
+        case let l where l.contains("screen") || l.contains("monitor") || l.contains("tv"):
+            color = UIColor(red: 0.30, green: 0.50, blue: 0.70, alpha: 0.65)
+        case let l where l.contains("plant") || l.contains("flower"):
+            color = UIColor(red: 0.35, green: 0.65, blue: 0.40, alpha: 0.65)
+        case let l where l.contains("book") || l.contains("shelf"):
+            color = UIColor(red: 0.60, green: 0.45, blue: 0.35, alpha: 0.65)
+        default:
+            color = UIColor(red: 0.50, green: 0.55, blue: 0.60, alpha: 0.55)
+        }
+
+        material.diffuse.contents = color
+        return material
+    }
+
+    private func applyMaterialRecursively(_ material: SCNMaterial, to node: SCNNode) {
+        if node.geometry != nil {
+            node.geometry?.materials = [material]
+        }
+        for child in node.childNodes {
+            applyMaterialRecursively(material, to: child)
+        }
+    }
+
+    private func applySelectionHighlight(to node: SCNNode) {
+        // Bright cyan edge glow via emission
+        applyHighlightRecursively(to: node)
+    }
+
+    private func applyHighlightRecursively(to node: SCNNode) {
+        if let geometry = node.geometry {
+            for material in geometry.materials {
+                material.emission.contents = UIColor(Color.spatialCyan)
+                material.emission.intensity = 0.6
+                material.transparency = min(material.transparency + 0.2, 1.0)
+            }
+        }
+        for child in node.childNodes {
+            applyHighlightRecursively(to: child)
+        }
     }
 
     // MARK: - Observation Pins
@@ -150,20 +358,88 @@ struct SceneViewRepresentable: UIViewRepresentable {
         guard showDense, let denseAssetURL else { return }
         guard let samples = try? loadDenseSamples(from: denseAssetURL), !samples.isEmpty else { return }
 
-        let stride = max(1, samples.count / Self.maxDensePointCount)
-        for sample in samples.enumerated().compactMap({ index, sample in
+        let stride = max(1, Int(ceil(Double(samples.count) / Double(Self.maxDensePointCount))))
+        let sampledPoints = samples.enumerated().compactMap { index, sample in
             index.isMultiple(of: stride) ? sample : nil
-        }) {
-            let sphere = SCNSphere(radius: 0.008)
-            let material = SCNMaterial()
-            material.diffuse.contents = sample.color
-            material.lightingModel = .constant
-            sphere.firstMaterial = material
-
-            let node = SCNNode(geometry: sphere)
-            node.position = SCNVector3(sample.position.x, sample.position.y, sample.position.z)
-            group.addChildNode(node)
         }
+
+        guard let geometry = makeDensePointGeometry(from: sampledPoints) else { return }
+        let node = SCNNode(geometry: geometry)
+        node.name = "densePointCloud"
+        group.addChildNode(node)
+    }
+
+    private func makeDensePointGeometry(from samples: [DensePointSample]) -> SCNGeometry? {
+        guard !samples.isEmpty else { return nil }
+
+        var vertexComponents: [Float] = []
+        vertexComponents.reserveCapacity(samples.count * 3)
+        var colorComponents: [UInt8] = []
+        colorComponents.reserveCapacity(samples.count * 4)
+        var indices: [UInt32] = []
+        indices.reserveCapacity(samples.count)
+
+        for (index, sample) in samples.enumerated() {
+            vertexComponents.append(sample.position.x)
+            vertexComponents.append(sample.position.y)
+            vertexComponents.append(sample.position.z)
+
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 1
+            sample.color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            colorComponents.append(UInt8(max(0, min(255, Int(red * 255)))))
+            colorComponents.append(UInt8(max(0, min(255, Int(green * 255)))))
+            colorComponents.append(UInt8(max(0, min(255, Int(blue * 255)))))
+            colorComponents.append(UInt8(max(0, min(255, Int(alpha * 255)))))
+            indices.append(UInt32(index))
+        }
+
+        let vertexData = vertexComponents.withUnsafeBufferPointer { Data(buffer: $0) }
+        let colorData = colorComponents.withUnsafeBufferPointer { Data(buffer: $0) }
+        let indexData = indices.withUnsafeBufferPointer { Data(buffer: $0) }
+
+        let vertexSource = SCNGeometrySource(
+            data: vertexData,
+            semantic: .vertex,
+            vectorCount: samples.count,
+            usesFloatComponents: true,
+            componentsPerVector: 3,
+            bytesPerComponent: MemoryLayout<Float>.size,
+            dataOffset: 0,
+            dataStride: MemoryLayout<Float>.size * 3
+        )
+
+        let colorSource = SCNGeometrySource(
+            data: colorData,
+            semantic: .color,
+            vectorCount: samples.count,
+            usesFloatComponents: false,
+            componentsPerVector: 4,
+            bytesPerComponent: MemoryLayout<UInt8>.size,
+            dataOffset: 0,
+            dataStride: MemoryLayout<UInt8>.size * 4
+        )
+
+        let element = SCNGeometryElement(
+            data: indexData,
+            primitiveType: .point,
+            primitiveCount: samples.count,
+            bytesPerIndex: MemoryLayout<UInt32>.size
+        )
+        element.pointSize = 6
+        element.minimumPointScreenSpaceRadius = 3
+        element.maximumPointScreenSpaceRadius = 10
+
+        let geometry = SCNGeometry(sources: [vertexSource, colorSource], elements: [element])
+        let material = SCNMaterial()
+        material.lightingModel = .constant
+        material.isDoubleSided = true
+        material.readsFromDepthBuffer = true
+        material.writesToDepthBuffer = true
+        geometry.materials = [material]
+        return geometry
     }
 
     private func loadDenseSamples(from url: URL) throws -> [DensePointSample] {
@@ -496,6 +772,82 @@ struct SceneViewRepresentable: UIViewRepresentable {
         var observations: [ObjectObservation] = []
         var projectedPositions: Binding<[UUID: CGPoint]>?
         var showObjects: Bool = true
+        var onSemanticObjectTapped: ((String) -> Void)?
+        private var observationSignature: String?
+        private var hypothesisSignature: String?
+        private var denseAssetPath: String?
+        private var lastShowDense = false
+        private var semanticSignature: String?
+        private var lastSelectedSemanticID: String?
+        private var lastShowSemantic = false
+        private var lastViewerMode: ViewerMode = .semantic
+
+        func needsRebuild(
+            observations: [ObjectObservation],
+            hypotheses: [ObjectHypothesis],
+            showDense: Bool,
+            denseAssetURL: URL?,
+            semanticObjects: [SemanticSceneObject],
+            selectedSemanticObjectID: String?,
+            showSemanticObjects: Bool,
+            viewerMode: ViewerMode
+        ) -> Bool {
+            let nextObservationSignature = Self.signature(for: observations)
+            let nextHypothesisSignature = Self.signature(for: hypotheses)
+            let nextDenseAssetPath = denseAssetURL?.path
+            let nextSemanticSignature = Self.semanticSignature(for: semanticObjects)
+
+            return nextObservationSignature != observationSignature ||
+                nextHypothesisSignature != hypothesisSignature ||
+                nextDenseAssetPath != denseAssetPath ||
+                showDense != lastShowDense ||
+                nextSemanticSignature != semanticSignature ||
+                selectedSemanticObjectID != lastSelectedSemanticID ||
+                showSemanticObjects != lastShowSemantic ||
+                viewerMode != lastViewerMode
+        }
+
+        func cacheSnapshot(
+            observations: [ObjectObservation],
+            hypotheses: [ObjectHypothesis],
+            showDense: Bool,
+            denseAssetURL: URL?,
+            semanticObjects: [SemanticSceneObject],
+            selectedSemanticObjectID: String?,
+            showSemanticObjects: Bool,
+            viewerMode: ViewerMode
+        ) {
+            observationSignature = Self.signature(for: observations)
+            hypothesisSignature = Self.signature(for: hypotheses)
+            denseAssetPath = denseAssetURL?.path
+            lastShowDense = showDense
+            semanticSignature = Self.semanticSignature(for: semanticObjects)
+            lastSelectedSemanticID = selectedSemanticObjectID
+            lastShowSemantic = showSemanticObjects
+            lastViewerMode = viewerMode
+        }
+
+        @MainActor @objc func handleTap(_ gestureRecognizer: UITapGestureRecognizer) {
+            guard let scnView else { return }
+            let location = gestureRecognizer.location(in: scnView)
+            let hitResults = scnView.hitTest(location, options: [
+                .searchMode: SCNHitTestSearchMode.closest.rawValue
+            ])
+
+            for hit in hitResults {
+                var node: SCNNode? = hit.node
+                while let current = node {
+                    if let name = current.name, name.hasPrefix("semantic_") {
+                        let objectID = String(name.dropFirst("semantic_".count))
+                        onSemanticObjectTapped?(objectID)
+                        return
+                    }
+                    node = current.parent
+                }
+            }
+            // Tapped empty space — deselect
+            onSemanticObjectTapped?("")
+        }
 
         @MainActor @objc func updateProjections() {
             guard showObjects,
@@ -521,6 +873,29 @@ struct SceneViewRepresentable: UIViewRepresentable {
 
         deinit {
             displayLink?.invalidate()
+        }
+
+        private static func signature(for observations: [ObjectObservation]) -> String {
+            observations.map { observation in
+                let position = observation.worldTransform.columns.3
+                return "\(observation.id.uuidString):\(position.x):\(position.y):\(position.z)"
+            }
+            .joined(separator: "|")
+        }
+
+        private static func signature(for hypotheses: [ObjectHypothesis]) -> String {
+            hypotheses.map { hypothesis in
+                let transformSignature = hypothesis.transformData?.base64EncodedString() ?? "nil"
+                return "\(hypothesis.id.uuidString):\(hypothesis.rank):\(hypothesis.confidence):\(transformSignature)"
+            }
+            .joined(separator: "|")
+        }
+
+        private static func semanticSignature(for objects: [SemanticSceneObject]) -> String {
+            objects.map { obj in
+                "\(obj.id):\(obj.label):\(obj.confidence)"
+            }
+            .joined(separator: "|")
         }
     }
 }

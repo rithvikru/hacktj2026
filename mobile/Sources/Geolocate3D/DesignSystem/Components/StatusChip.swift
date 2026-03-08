@@ -7,14 +7,14 @@ struct StatusChip: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: iconName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 9, weight: .semibold))
             Text(status.capitalized)
                 .font(SpatialFont.caption)
         }
         .foregroundStyle(chipColor)
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(chipColor.opacity(0.15), in: Capsule())
+        .padding(.vertical, 5)
+        .background(chipColor.opacity(0.1), in: Capsule())
     }
 
     private var chipColor: Color {

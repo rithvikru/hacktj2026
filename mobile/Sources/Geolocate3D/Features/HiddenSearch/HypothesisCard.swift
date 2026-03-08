@@ -8,7 +8,7 @@ struct HypothesisCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 ConfidenceIndicator(level: hypothesis.confidenceClass)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 28, height: 28)
                 Spacer()
                 Text("#\(hypothesis.rank)")
                     .font(SpatialFont.dataSmall)
@@ -34,19 +34,17 @@ struct HypothesisCard: View {
                     .foregroundStyle(.dimLabel)
             }
         }
-        .padding(16)
+        .padding(14)
         .frame(width: 200)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(Color.elevatedSurface.opacity(0.95))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(
-                    isSelected ? Color.inferenceViolet.opacity(0.8) : .white.opacity(0.1),
+                    isSelected ? Color.inferenceViolet.opacity(0.5) : Color.white.opacity(0.05),
                     lineWidth: isSelected ? 1.5 : 0.5
                 )
         }
-        .if(isSelected) { view in
-            view.spatialGlow(color: .inferenceViolet, cornerRadius: 24, intensity: 0.6)
-        }
+        .shadow(color: isSelected ? .inferenceViolet.opacity(0.1) : .black.opacity(0.15), radius: isSelected ? 12 : 6, y: 4)
     }
 }

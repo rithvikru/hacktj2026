@@ -24,30 +24,33 @@ struct ScanRoomView: View {
             VStack {
                 HStack {
                     Button(action: { coordinator.dismissFullScreen() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.white)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
                     }
                     Spacer()
                     ScanStatusPill(state: viewModel.scanState)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
 
                 Spacer()
 
-                HStack {
-                    VStack(alignment: .leading) {
+                // Bottom bar
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("\(viewModel.detectedObjectCount)")
                             .font(SpatialFont.dataLarge)
-                            .foregroundStyle(.spatialCyan)
+                            .foregroundStyle(.white)
                         Text("room features")
                             .font(SpatialFont.caption)
                             .foregroundStyle(.dimLabel)
                     }
                     if !viewModel.liveSpotlightDetections.isEmpty {
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("\(viewModel.liveSpotlightDetections.count)")
                                 .font(SpatialFont.dataLarge)
                                 .foregroundStyle(.warningAmber)
@@ -55,6 +58,7 @@ struct ScanRoomView: View {
                                 .font(SpatialFont.caption)
                                 .foregroundStyle(.dimLabel)
                         }
+                        .padding(.leading, 16)
                     }
                     Spacer()
                     if viewModel.scanState == .ready {
@@ -67,10 +71,18 @@ struct ScanRoomView: View {
                             }
                         }
                         .buttonStyle(SpatialButtonStyle())
+                        .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .padding(24)
-                .background(.ultraThinMaterial)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(
+                    LinearGradient(
+                        colors: [.clear, Color.spaceBlack.opacity(0.8), Color.spaceBlack],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
         }
         .onChange(of: viewModel.savedRoomID) { _, roomID in
@@ -96,18 +108,18 @@ private struct ScanObjectOverlay: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(detection.maskAvailable ? .spatialCyan : .warningAmber, lineWidth: 2.5)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(borderColor.opacity(0.7), lineWidth: 1.5)
                 .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill((detection.maskAvailable ? Color.spatialCyan : .warningAmber).opacity(0.08))
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(borderColor.opacity(0.06))
                 )
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
                     Circle()
-                        .fill(detection.maskAvailable ? .spatialCyan : .warningAmber)
-                        .frame(width: 8, height: 8)
+                        .fill(borderColor)
+                        .frame(width: 6, height: 6)
                     Text(detection.label)
                         .font(SpatialFont.caption)
                         .foregroundStyle(.white)
@@ -115,15 +127,18 @@ private struct ScanObjectOverlay: View {
                 }
                 Text("\(Int(detection.confidence * 100))%")
                     .font(SpatialFont.dataSmall)
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.white.opacity(0.75))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(6)
         }
-        .frame(width: max(rect.width, 56), height: max(rect.height, 56))
+        .frame(width: max(rect.width, 48), height: max(rect.height, 48))
         .position(x: rect.midX, y: rect.midY)
-        .shadow(color: (detection.maskAvailable ? Color.spatialCyan : .warningAmber).opacity(0.25), radius: 18)
+    }
+
+    private var borderColor: Color {
+        detection.maskAvailable ? .spatialCyan : .warningAmber
     }
 }

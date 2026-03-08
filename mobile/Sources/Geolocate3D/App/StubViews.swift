@@ -13,23 +13,25 @@ struct LiveSearchStubView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 16) {
+            Color.spaceBlack.ignoresSafeArea()
+            VStack(spacing: 20) {
                 Image(systemName: "arkit")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.spatialCyan)
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(.spatialCyan.opacity(0.7))
                 Text("Live Search")
-                    .font(.title2.weight(.semibold))
+                    .font(SpatialFont.title2)
                     .foregroundStyle(.white)
                 if let roomID {
                     Text("Room: \(roomID.uuidString.prefix(8))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(SpatialFont.caption)
+                        .foregroundStyle(.dimLabel)
                 }
                 Button("Close") {
                     coordinator.dismissFullScreen()
                 }
-                .foregroundStyle(.white)
+                .font(SpatialFont.subheadline)
+                .foregroundStyle(.spatialCyan)
+                .padding(.top, 8)
             }
         }
     }
@@ -41,17 +43,18 @@ struct CompanionTargetStubView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Companion Target")
                         .font(SpatialFont.title)
                         .foregroundStyle(.white)
                     Text("This surface is reserved for the cooperative target flow. Nearby Interaction and tag-based flows are not wired yet, but the app can still verify backend connectivity from here.")
-                        .font(SpatialFont.body)
+                        .font(SpatialFont.subheadline)
                         .foregroundStyle(.dimLabel)
+                        .lineSpacing(2)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     Label(
                         backendClient.isConnected ? "Backend reachable" : "Backend not reachable",
                         systemImage: backendClient.isConnected ? "checkmark.circle.fill" : "wifi.slash"
@@ -63,7 +66,7 @@ struct CompanionTargetStubView: View {
                         .foregroundStyle(.dimLabel)
                 }
                 .padding(16)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .background(Color.elevatedSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Button("Re-test Backend") {
                     Task {
@@ -77,11 +80,12 @@ struct CompanionTargetStubView: View {
                 Button("Close") {
                     coordinator.dismissFullScreen()
                 }
-                .foregroundStyle(.white)
+                .font(SpatialFont.subheadline)
+                .foregroundStyle(.spatialCyan)
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color.obsidian)
+            .background(Color.spaceBlack)
             .task {
                 await backendClient.checkConnection()
             }
@@ -93,15 +97,16 @@ struct RoomTwinStubView: View {
     let roomID: UUID
 
     var body: some View {
-        VStack {
+        VStack(spacing: 16) {
             Image(systemName: "cube.transparent")
-                .font(.system(size: 48))
-                .foregroundStyle(.spatialCyan)
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(.spatialCyan.opacity(0.7))
             Text("Room Twin Viewer")
-                .font(.title2.weight(.semibold))
+                .font(SpatialFont.title2)
+                .foregroundStyle(.white)
             Text("Room: \(roomID.uuidString.prefix(8))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(SpatialFont.caption)
+                .foregroundStyle(.dimLabel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.spaceBlack)
@@ -114,12 +119,13 @@ struct HiddenSearchStubView: View {
     let roomID: UUID
 
     var body: some View {
-        VStack {
+        VStack(spacing: 16) {
             Image(systemName: "eye.slash")
-                .font(.system(size: 48))
-                .foregroundStyle(.inferenceViolet)
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(.inferenceViolet.opacity(0.7))
             Text("Hidden Search")
-                .font(.title2.weight(.semibold))
+                .font(SpatialFont.title2)
+                .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.spaceBlack)
@@ -133,12 +139,16 @@ struct QueryConsoleStubView: View {
 
     var body: some View {
         NavigationStack {
-            VStack {
+            VStack(spacing: 12) {
                 Text("Query Console")
-                    .font(.title2)
+                    .font(SpatialFont.title2)
+                    .foregroundStyle(.white)
                 Text("Where are my keys?")
-                    .foregroundStyle(.secondary)
+                    .font(SpatialFont.subheadline)
+                    .foregroundStyle(.dimLabel)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.spaceBlack)
             .navigationTitle("Query")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -161,12 +171,12 @@ struct ScanResultsStubView: View {
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(height: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
 
                     VStack(spacing: 8) {
                         Text(room.name)
-                            .font(SpatialFont.title)
+                            .font(SpatialFont.title2)
                             .foregroundStyle(.white)
                         Text("\(room.observationCount) observations saved")
                             .font(SpatialFont.caption)
@@ -184,12 +194,14 @@ struct ScanResultsStubView: View {
                         dismiss()
                         coordinator.presentImmersive(.liveSearch(roomID: roomID))
                     }
+                    .font(SpatialFont.subheadline)
                     .foregroundStyle(.spatialCyan)
 
                     Button("Ask a Query") {
                         dismiss()
                         coordinator.presentSheet(.queryConsole(roomID: roomID))
                     }
+                    .font(SpatialFont.subheadline)
                     .foregroundStyle(.spatialCyan)
                 } else {
                     ProgressView()
@@ -201,7 +213,7 @@ struct ScanResultsStubView: View {
                 Spacer()
             }
             .padding(24)
-            .background(Color.obsidian)
+            .background(Color.spaceBlack)
             .navigationTitle("Scan Complete")
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -234,69 +246,46 @@ struct ObjectDetailStubView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(height: 220)
-                                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
 
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 16) {
                             Text(observation.label)
                                 .font(SpatialFont.title)
                                 .foregroundStyle(.white)
-                            HStack {
-                                Text("Confidence")
-                                    .foregroundStyle(.dimLabel)
-                                Spacer()
-                                Text("\(Int(observation.confidence * 100))%")
-                                    .foregroundStyle(.spatialCyan)
-                            }
-                            HStack {
-                                Text("Source")
-                                    .foregroundStyle(.dimLabel)
-                                Spacer()
-                                Text(observation.source.rawValue)
-                                    .foregroundStyle(.white)
-                            }
-                            HStack {
-                                Text("Observed")
-                                    .foregroundStyle(.dimLabel)
-                                Spacer()
-                                Text(observation.observedAt.formatted(date: .abbreviated, time: .shortened))
-                                    .foregroundStyle(.white)
-                            }
-                            HStack {
-                                Text("Visibility")
-                                    .foregroundStyle(.dimLabel)
-                                Spacer()
-                                Text(observation.visibilityState.rawValue.capitalized)
-                                    .foregroundStyle(.white)
-                            }
+
+                            DetailRow(label: "Confidence", value: "\(Int(observation.confidence * 100))%", valueColor: .spatialCyan)
+                            DetailRow(label: "Source", value: observation.source.rawValue)
+                            DetailRow(label: "Observed", value: observation.observedAt.formatted(date: .abbreviated, time: .shortened))
+                            DetailRow(label: "Visibility", value: observation.visibilityState.rawValue.capitalized)
+
                             if let roomName = observation.room?.name {
-                                HStack {
-                                    Text("Room")
-                                        .foregroundStyle(.dimLabel)
-                                    Spacer()
-                                    Text(roomName)
-                                        .foregroundStyle(.white)
-                                }
+                                DetailRow(label: "Room", value: roomName)
                             }
                         }
-                        .padding(16)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .padding(20)
+                        .background(Color.elevatedSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     } else {
-                        ProgressView()
-                            .tint(.spatialCyan)
-                        Text("Loading observation details...")
-                            .font(SpatialFont.caption)
-                            .foregroundStyle(.dimLabel)
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .tint(.spatialCyan)
+                            Text("Loading observation details...")
+                                .font(SpatialFont.caption)
+                                .foregroundStyle(.dimLabel)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
                     }
                 }
-                .padding(24)
+                .padding(20)
             }
-            .background(Color.obsidian)
+            .background(Color.spaceBlack)
             .navigationTitle("Object Detail")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                        .foregroundStyle(.spatialCyan)
                 }
             }
             .task {
@@ -309,6 +298,24 @@ struct ObjectDetailStubView: View {
         var descriptor = FetchDescriptor<ObjectObservation>(predicate: #Predicate { $0.id == observationID })
         descriptor.fetchLimit = 1
         return try? modelContext.fetch(descriptor).first
+    }
+}
+
+private struct DetailRow: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .white
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(SpatialFont.subheadline)
+                .foregroundStyle(.dimLabel)
+            Spacer()
+            Text(value)
+                .font(SpatialFont.subheadline)
+                .foregroundStyle(valueColor)
+        }
     }
 }
 
@@ -362,6 +369,7 @@ struct SettingsView: View {
                 Section("About") {
                     Text("Geolocate3D")
                     Text("AR room scanning, query, hidden search, and dense twin viewer")
+                        .foregroundStyle(.dimLabel)
                 }
             }
             .navigationTitle("Settings")

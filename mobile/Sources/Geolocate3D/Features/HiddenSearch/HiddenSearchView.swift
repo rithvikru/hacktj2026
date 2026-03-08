@@ -24,8 +24,9 @@ struct HiddenSearchView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 12) {
+                // Search bar
                 HStack(spacing: 12) {
-                    TextField("What are you trying to uncover?", text: $queryText)
+                    TextField("What are you trying to find?", text: $queryText)
                         .font(SpatialFont.body)
                         .foregroundStyle(.white)
                         .tint(.inferenceViolet)
@@ -35,23 +36,28 @@ struct HiddenSearchView: View {
                     Button(action: submitHiddenSearch) {
                         if viewModel.isLoading {
                             ProgressView()
-                                .tint(.black)
+                                .tint(.white)
                                 .frame(width: 20, height: 20)
                         } else {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                         }
                     }
-                    .foregroundStyle(.black)
-                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
                     .background(Color.inferenceViolet, in: Circle())
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(.vertical, 10)
+                .background(Color.elevatedSurface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                )
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
 
+                // Suggestion chips
                 if viewModel.hypotheses.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -62,10 +68,10 @@ struct HiddenSearchView: View {
                                 } label: {
                                     Text(suggestion)
                                         .font(SpatialFont.caption)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(.white.opacity(0.8))
                                         .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(.glassWhite, in: Capsule())
+                                        .padding(.vertical, 7)
+                                        .background(Color.elevatedSurface, in: Capsule())
                                 }
                             }
                         }
@@ -88,7 +94,7 @@ struct HiddenSearchView: View {
                                 isSelected: hypothesis.id == selectedHypothesis?.id
                             )
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.35)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     selectedHypothesis = hypothesis
                                 }
                             }
@@ -110,7 +116,7 @@ struct HiddenSearchView: View {
                             .foregroundStyle(.warningAmber)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .background(Color.elevatedSurface.opacity(0.9), in: Capsule())
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -120,15 +126,15 @@ struct HiddenSearchView: View {
 
             // Empty state
             if viewModel.hypotheses.isEmpty && !viewModel.isLoading {
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 40))
-                        .foregroundStyle(.inferenceViolet)
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(.inferenceViolet.opacity(0.6))
                     Text("No hypotheses yet")
                         .font(SpatialFont.headline)
                         .foregroundStyle(.white)
                     Text("Search for a hidden object to generate location estimates.")
-                        .font(SpatialFont.caption)
+                        .font(SpatialFont.footnote)
                         .foregroundStyle(.dimLabel)
                         .multilineTextAlignment(.center)
                 }

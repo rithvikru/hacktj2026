@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,11 +25,18 @@ def generate_pointcloud(
     voxel_size: float = 0.02,  # 2cm voxel grid
     max_depth: float = 8.0,
     min_depth: float = 0.1,
+    min_confidence: int = 1,
+    max_points_per_frame: int = 12000,
 ) -> PointCloud:
     """Generate colored point cloud from depth maps + camera poses."""
     all_points = []
     all_colors = []
 
+    metadata_by_id = {
+        str(frame_meta.get("frame_id") or frame_meta.get("id")): frame_meta
+        for frame_meta in frame_metadata
+        if frame_meta.get("frame_id") or frame_meta.get("id")
+    }
     metadata_by_name = {
         Path(
             frame_meta.get("image_path")
@@ -40,7 +48,12 @@ def generate_pointcloud(
     }
 
     for depth_result in depth_results:
-        frame_meta = metadata_by_name.get(Path(depth_result.image_path).name)
+        frame_meta = None
+        frame_id = getattr(depth_result, "frame_id", None)
+        if frame_id:
+            frame_meta = metadata_by_id.get(str(frame_id))
+        if frame_meta is None:
+            frame_meta = metadata_by_name.get(Path(depth_result.image_path).name)
         if frame_meta is None:
             logger.warning("Skipping depth result without matching frame metadata: %s", depth_result.image_path)
             continue
@@ -62,6 +75,13 @@ def generate_pointcloud(
         depth = depth_result.depth_map
         h, w = depth.shape
 
+        confidence = getattr(depth_result, "confidence_map", None)
+        if confidence is not None and confidence.shape != depth.shape:
+            confidence = np.array(
+                Image.fromarray(confidence).resize((w, h), Image.NEAREST),
+                dtype=np.uint8,
+            )
+
         # Load RGB
         image = np.array(
             Image.open(depth_result.image_path).convert("RGB").resize((w, h))
@@ -72,14 +92,34 @@ def generate_pointcloud(
 
         # Filter valid depths
         valid = (depth > min_depth) & (depth < max_depth)
+        if confidence is not None:
+            valid &= confidence >= min_confidence
+        valid_count = int(valid.sum())
+        if valid_count == 0:
+            continue
+
+        sample_stride = max(
+            1,
+            int(math.sqrt(valid_count / max_points_per_frame)),
+        )
+        if sample_stride > 1:
+            sparse_mask = np.zeros_like(valid, dtype=bool)
+            sparse_mask[::sample_stride, ::sample_stride] = True
+            valid &= sparse_mask
+
         u_valid = u_coords[valid].astype(np.float32)
         v_valid = v_coords[valid].astype(np.float32)
         d_valid = depth[valid]
         colors_valid = image[valid]
 
         # Unproject to camera space
-        fx, fy = K[0, 0], K[1, 1]
-        cx, cy = K[0, 2], K[1, 2]
+        rgb_width, rgb_height = depth_result.original_size
+        scale_x = w / max(float(rgb_width), 1.0)
+        scale_y = h / max(float(rgb_height), 1.0)
+        fx = K[0, 0] * scale_x
+        fy = K[1, 1] * scale_y
+        cx = K[0, 2] * scale_x
+        cy = K[1, 2] * scale_y
         x_cam = (u_valid - cx) * d_valid / fx
         y_cam = (v_valid - cy) * d_valid / fy
         z_cam = d_valid

@@ -2,32 +2,44 @@ import SwiftUI
 
 struct AnnotationPin: View {
     let observation: ObjectObservation
+    var isSelected: Bool = false
+    var showLabel: Bool = true
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(observation.label)
-                .font(SpatialFont.caption)
-                .foregroundStyle(.white)
-                .lineLimit(1)
+        VStack(spacing: 2) {
+            if showLabel {
+                Text(observation.label)
+                    .font(SpatialFont.caption)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
 
-            Text("\(Int(observation.confidence * 100))%")
-                .font(SpatialFont.dataSmall)
-                .foregroundStyle(confidenceColor)
+                Text("\(Int(observation.confidence * 100))%")
+                    .font(SpatialFont.dataSmall)
+                    .foregroundStyle(confidenceColor.opacity(0.9))
+            } else {
+                // Compact dot-only mode
+                Circle()
+                    .fill(confidenceColor)
+                    .frame(width: 8, height: 8)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, showLabel ? 10 : 4)
+        .padding(.vertical, showLabel ? 6 : 4)
+        .background(Color.elevatedSurface.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: showLabel ? 10 : 6, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(confidenceColor.opacity(0.4), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: showLabel ? 10 : 6, style: .continuous)
+                .stroke(
+                    isSelected ? Color.spatialCyan : confidenceColor.opacity(0.3),
+                    lineWidth: isSelected ? 1.5 : 0.5
+                )
         )
     }
 
     private var confidenceColor: Color {
         switch observation.confidenceClass {
-        case .confirmedHigh: return .spatialCyan
-        case .confirmedMedium: return .spatialCyan.opacity(0.7)
+        case .confirmedHigh: return .confirmGreen
+        case .confirmedMedium: return .spatialCyan
         case .lastSeen: return .warningAmber
         case .signalEstimated: return .signalMagenta
         case .likelihoodRanked: return .inferenceViolet

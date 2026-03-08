@@ -4,33 +4,43 @@ struct RoomPreviewCard: View {
     let room: RoomRecord
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             // Room preview thumbnail
-            if let image = room.previewImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                LinearGradient(
-                    colors: [.indigo.opacity(0.3), .spaceBlack],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+            ZStack {
+                if let image = room.previewImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    LinearGradient(
+                        colors: [Color.voidGray, Color.spaceBlack],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .overlay {
+                        Image(systemName: "cube.transparent")
+                            .font(.system(size: 32, weight: .ultraLight))
+                            .foregroundStyle(.dimLabel)
+                    }
+                }
             }
+            .frame(height: 180)
+            .clipped()
 
-            // Glass info overlay
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
+            // Info section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top) {
                     Text(room.name)
-                        .font(SpatialFont.title2)
+                        .font(SpatialFont.headline)
                         .foregroundStyle(.white)
+                        .lineLimit(1)
                     Spacer()
                     Text("\(room.observationCount) objects")
                         .font(SpatialFont.caption)
                         .foregroundStyle(.dimLabel)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(.white.opacity(0.1), in: Capsule())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.06), in: Capsule())
                 }
 
                 HStack {
@@ -41,34 +51,14 @@ struct RoomPreviewCard: View {
                     StatusChip(status: room.reconstructionStatus.rawValue)
                 }
             }
-            .padding(20)
-            .background(.ultraThinMaterial)
-            .overlay(alignment: .top) {
-                // Luminous specular edge
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.clear, .white.opacity(0.4), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            }
+            .padding(16)
+            .background(Color.elevatedSurface)
         }
-        .frame(height: 260)
-        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [.white.opacity(0.5), .white.opacity(0.05), .white.opacity(0.2)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.5
-                )
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.4), radius: 30, y: 15)
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
     }
 }

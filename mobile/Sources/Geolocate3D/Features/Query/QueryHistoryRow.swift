@@ -6,10 +6,10 @@ struct QueryHistoryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "text.magnifyingglass")
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.dimLabel)
                 .frame(width: 28, height: 28)
-                .background(.glassWhite, in: Circle())
+                .background(Color.white.opacity(0.04), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.query)

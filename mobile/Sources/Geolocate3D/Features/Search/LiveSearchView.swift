@@ -29,41 +29,45 @@ struct LiveSearchView: View {
                 // Top bar: dismiss + tracking status
                 HStack {
                     Button { coordinator.dismissFullScreen() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.white)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .frame(width: 36, height: 36)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
                     }
                     Spacer()
                     TrackingStatusBadge(quality: trackingQuality)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
 
                 // Relocalization banner
                 if relocMonitor.state == .relocalizing {
                     HStack(spacing: 8) {
                         ProgressView()
+                            .controlSize(.small)
                             .tint(.spatialCyan)
                         Text(relocMonitor.statusMessage)
                             .font(SpatialFont.caption)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.white.opacity(0.85))
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(Color.elevatedSurface.opacity(0.9), in: Capsule())
                     .padding(.top, 8)
                 } else if relocMonitor.state == .failed {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
                             .foregroundStyle(.warningAmber)
                         Text(relocMonitor.statusMessage)
                             .font(SpatialFont.caption)
                             .foregroundStyle(.warningAmber)
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(Color.elevatedSurface.opacity(0.9), in: Capsule())
                     .padding(.top, 8)
                 }
 
@@ -71,16 +75,16 @@ struct LiveSearchView: View {
 
                 // Object count indicator
                 if !viewModel.activeObservations.isEmpty {
-                    HStack {
+                    HStack(spacing: 6) {
                         Text("\(viewModel.activeObservations.count)")
                             .font(SpatialFont.dataLarge)
-                            .foregroundStyle(.spatialCyan)
+                            .foregroundStyle(.white)
                         Text("objects detected")
                             .font(SpatialFont.caption)
                             .foregroundStyle(.dimLabel)
                         Spacer()
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 4)
                 }
 
@@ -98,11 +102,31 @@ struct LiveSearchView: View {
                                 .foregroundStyle(viewModel.routeWaypoints.isEmpty ? .warningAmber : .spatialCyan)
                                 .padding(.top, 4)
                         }
+
+                        // Hand off to semantic room twin view
+                        if let roomID {
+                            Button {
+                                coordinator.dismissFullScreen()
+                                coordinator.push(.roomTwin(roomID: roomID))
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "cube.transparent")
+                                        .font(.system(size: 11, weight: .medium))
+                                    Text("View in Room Twin")
+                                        .font(SpatialFont.caption)
+                                }
+                                .foregroundStyle(.spatialCyan)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.spatialCyan.opacity(0.08), in: Capsule())
+                            }
+                            .padding(.top, 4)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .padding(.horizontal, 24)
+                    .padding(14)
+                    .background(Color.elevatedSurface.opacity(0.9), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 8)
                 }
 

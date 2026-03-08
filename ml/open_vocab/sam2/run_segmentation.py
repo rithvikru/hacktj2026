@@ -101,7 +101,14 @@ def segment(image: np.ndarray, bboxes_xyxy_norm: list[list[float]]) -> list[Mask
 
     results = []
     for i, bbox in enumerate(bboxes_xyxy_norm):
-        mask_arr = masks_out[i, 0].cpu().numpy().astype(bool) if masks_out.ndim == 4 else masks_out[i].cpu().numpy().astype(bool)
+        if masks_out.ndim == 4:
+            raw_mask = masks_out[i, 0]
+        else:
+            raw_mask = masks_out[i]
+        if hasattr(raw_mask, "cpu"):
+            mask_arr = raw_mask.cpu().numpy().astype(bool)
+        else:
+            mask_arr = np.asarray(raw_mask).astype(bool)
         area = int(mask_arr.sum())
         stability = scores[i].item() if scores.ndim == 1 else scores[i, 0].item()
         results.append(

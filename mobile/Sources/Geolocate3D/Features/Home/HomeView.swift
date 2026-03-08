@@ -13,7 +13,7 @@ struct HomeView: View {
                 if rooms.isEmpty {
                     EmptyStateView()
                 } else {
-                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 20) {
+                    LazyVStack(spacing: 16) {
                         ForEach(rooms) { room in
                             RoomPreviewCard(room: room)
                                 .onTapGesture {
@@ -34,6 +34,7 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
+                    .padding(.bottom, 100)
                 }
             }
             .background(Color.spaceBlack)
@@ -44,12 +45,12 @@ struct HomeView: View {
                 coordinator.presentImmersive(.scanRoom)
             } label: {
                 Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 64, height: 64)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
                     .background(Color.spatialCyan)
                     .clipShape(Circle())
-                    .shadow(color: .spatialCyan.opacity(0.4), radius: 20, y: 8)
+                    .shadow(color: .spatialCyan.opacity(0.2), radius: 16, y: 6)
             }
             .padding(.trailing, 24)
             .padding(.bottom, 24)

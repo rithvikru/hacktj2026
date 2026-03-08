@@ -27,7 +27,7 @@ private struct SceneKitHeatmapRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView(frame: .zero)
-        scnView.backgroundColor = .black
+        scnView.backgroundColor = UIColor(Color.spaceBlack)
         scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = true
         scnView.antialiasingMode = .multisampling4X
@@ -39,7 +39,7 @@ private struct SceneKitHeatmapRepresentable: UIViewRepresentable {
             addHeatmapNodes(to: scene.rootNode)
         } else {
             scnView.scene = SCNScene()
-            scnView.scene?.background.contents = UIColor.black
+            scnView.scene?.background.contents = UIColor(Color.spaceBlack)
         }
 
         return scnView

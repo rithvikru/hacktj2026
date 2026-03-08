@@ -13,19 +13,19 @@ struct TrackingStatusBadge: View {
     let quality: TrackingQuality
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Circle()
                 .fill(dotColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 6, height: 6)
 
             Text(label)
                 .font(SpatialFont.caption)
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.9))
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+        .padding(.vertical, 6)
+        .background(Color.elevatedSurface.opacity(0.9), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 0.5))
     }
 
     private var dotColor: Color {

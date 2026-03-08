@@ -3,23 +3,31 @@ import SwiftUI
 
 struct EmptyStateView: View {
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: "cube.transparent")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundStyle(.dimLabel)
+                .font(.system(size: 48, weight: .ultraLight))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.spatialCyan.opacity(0.6), .inferenceViolet.opacity(0.4)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .symbolRenderingMode(.hierarchical)
 
-            Text("No Spaces Yet")
-                .font(SpatialFont.title2)
-                .foregroundStyle(.white)
+            VStack(spacing: 8) {
+                Text("No Spaces Yet")
+                    .font(SpatialFont.title2)
+                    .foregroundStyle(.white)
 
-            Text("Tap the scan button to capture your first room")
-                .font(SpatialFont.subheadline)
-                .foregroundStyle(.dimLabel)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                Text("Scan your first room to start finding objects")
+                    .font(SpatialFont.subheadline)
+                    .foregroundStyle(.dimLabel)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.top, 80)
+        .padding(.horizontal, 48)
+        .padding(.top, 60)
     }
 }

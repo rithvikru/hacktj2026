@@ -47,4 +47,4 @@ else
 fi
 
 cd "$ML_DIR"
-exec uv run --group query-serving uvicorn serving.api.app:app --app-dir . --host 0.0.0.0 --port "$PORT" --reload
+exec uv run --group query-serving uvicorn serving.api.app:app --app-dir . --host 0.0.0.0 --port "$PORT"

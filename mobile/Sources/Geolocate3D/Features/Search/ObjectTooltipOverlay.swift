@@ -5,10 +5,10 @@ struct ObjectTooltipOverlay: View {
     let observation: ScreenObservation
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 6) {
+        VStack(spacing: 3) {
+            HStack(spacing: 5) {
                 ConfidenceIndicator(level: observation.confidenceClass)
-                    .frame(width: 12, height: 12)
+                    .frame(width: 10, height: 10)
 
                 Text(observation.label)
                     .font(SpatialFont.headline)
@@ -17,15 +17,15 @@ struct ObjectTooltipOverlay: View {
 
             Text("\(Int(observation.confidence * 100))%")
                 .font(SpatialFont.dataSmall)
-                .foregroundStyle(.spatialCyan)
+                .foregroundStyle(.spatialCyan.opacity(0.9))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.elevatedSurface.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
         }
     }
 }

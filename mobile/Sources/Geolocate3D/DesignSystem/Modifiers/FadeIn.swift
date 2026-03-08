@@ -8,9 +8,9 @@ struct FadeIn: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(isVisible ? 1 : 0)
-            .offset(y: isVisible ? 0 : 10)
+            .offset(y: isVisible ? 0 : 8)
             .onAppear {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8).delay(delay)) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85).delay(delay)) {
                     isVisible = true
                 }
             }

@@ -84,7 +84,7 @@ final class FrameBundleWriter {
             to: url,
             typeIdentifier: UTType.jpeg.identifier,
             properties: [
-                kCGImageDestinationLossyCompressionQuality: 0.92,
+                kCGImageDestinationLossyCompressionQuality: 0.97,
             ]
         )
     }

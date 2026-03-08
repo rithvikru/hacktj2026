@@ -8,6 +8,10 @@ Source-of-truth implementation spec:
 - `docs/execution-checklist.md`
 - `docs/dataset-source-research.md`
 - `docs/dataset-acquisition-plan.md`
+- `docs/reconstruction-research-and-fixes.md`
+- `docs/semantic-object-reconstruction.md`
+- `docs/frontend-semantic-room-spec.md`
+- `docs/frontend-photoreal-dense-spec.md`
 
 ML workspace:
 

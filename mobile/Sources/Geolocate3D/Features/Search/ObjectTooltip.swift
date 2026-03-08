@@ -11,15 +11,15 @@ struct ObjectTooltip: View {
                 .foregroundStyle(.white)
             Text("\(Int(confidence * 100))%")
                 .font(SpatialFont.dataSmall)
-                .foregroundStyle(.spatialCyan)
+                .foregroundStyle(.spatialCyan.opacity(0.9))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.elevatedSurface.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
         }
     }
 }

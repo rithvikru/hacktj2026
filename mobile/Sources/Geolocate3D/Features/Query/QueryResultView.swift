@@ -5,23 +5,23 @@ struct QueryResultView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Result type + confidence indicator
+            // Result type + confidence
             HStack(spacing: 8) {
                 ConfidenceIndicator(level: result.resultType)
-                    .frame(width: 20, height: 20)
+                    .frame(width: 18, height: 18)
 
                 Text(resultTypeLabel)
                     .font(SpatialFont.caption)
                     .foregroundStyle(resultTypeColor)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(resultTypeColor.opacity(0.15), in: Capsule())
+                    .padding(.vertical, 3)
+                    .background(resultTypeColor.opacity(0.1), in: Capsule())
 
                 Spacer()
 
                 Text("\(Int(result.confidence * 100))%")
                     .font(SpatialFont.dataMedium)
-                    .foregroundStyle(.spatialCyan)
+                    .foregroundStyle(.white)
             }
 
             // Object label
@@ -31,20 +31,21 @@ struct QueryResultView: View {
 
             // Explanation
             Text(result.explanation)
-                .font(SpatialFont.body)
+                .font(SpatialFont.subheadline)
                 .foregroundStyle(.dimLabel)
+                .lineSpacing(2)
 
             // Evidence sources
             if !result.evidence.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         ForEach(result.evidence, id: \.self) { source in
                             Text(source)
                                 .font(SpatialFont.caption)
                                 .foregroundStyle(.spatialCyan)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .background(Color.spatialCyan.opacity(0.15), in: Capsule())
+                                .background(Color.spatialCyan.opacity(0.08), in: Capsule())
                         }
                     }
                 }
@@ -56,7 +57,7 @@ struct QueryResultView: View {
                 .foregroundStyle(.dimLabel)
         }
         .padding(16)
-        .glassBackground(cornerRadius: 24)
+        .glassBackground(cornerRadius: 16)
     }
 
     private var resultTypeLabel: String {
@@ -71,7 +72,7 @@ struct QueryResultView: View {
 
     private var resultTypeColor: Color {
         switch result.resultType {
-        case .confirmedHigh, .confirmedMedium: return .spatialCyan
+        case .confirmedHigh, .confirmedMedium: return .confirmGreen
         case .lastSeen:         return .warningAmber
         case .signalEstimated:  return .signalMagenta
         case .likelihoodRanked: return .inferenceViolet

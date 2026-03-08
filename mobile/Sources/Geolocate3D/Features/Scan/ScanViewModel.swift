@@ -31,10 +31,8 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
 
     private let persistence = RoomPersistenceService()
     private let frameBundleWriter = FrameBundleWriter()
-    private let minimumKeyframeInterval: TimeInterval = 0.75
-    private let maximumKeyframeInterval: TimeInterval = 2.0
-    private let minimumKeyframeTranslation: Float = 0.12
-    private let minimumKeyframeRotation: Float = 0.20
+    private let captureProfile: CaptureProfile = .denseTwin
+    private let maximumKeyframeInterval: TimeInterval = 0.8
     private let minimumLiveDetectionInterval: TimeInterval = 1.8
     private let liveSpotlightLabels = [
         "phone",
@@ -178,6 +176,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                         confidenceMapPath: frame.confidenceMapPath
                     )
                 },
+                captureProfile: captureProfile,
                 keyframeSelection: currentKeyframeSelection
             )
             let bundleURL = persistence.frameBundleManifestURL(for: roomID, sessionID: sessionID)
@@ -220,10 +219,10 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
 
     private var currentKeyframeSelection: KeyframeSelection {
         KeyframeSelection(
-            minimumIntervalSeconds: minimumKeyframeInterval,
+            minimumIntervalSeconds: captureProfile.samplingIntervalSeconds,
             maximumIntervalSeconds: maximumKeyframeInterval,
-            minimumTranslationMeters: minimumKeyframeTranslation,
-            minimumRotationRadians: minimumKeyframeRotation
+            minimumTranslationMeters: captureProfile.minimumTranslationMeters,
+            minimumRotationRadians: captureProfile.minimumRotationRadians
         )
     }
 
@@ -256,7 +255,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             guard let self else { return }
             while !Task.isCancelled {
                 self.captureCurrentFrame(force: false)
-                try? await Task.sleep(nanoseconds: 350_000_000)
+                try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }
     }
@@ -418,7 +417,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
         }
 
         let elapsed = capturedAt.timeIntervalSince(lastCapturedAt)
-        if elapsed < minimumKeyframeInterval {
+        if elapsed < captureProfile.samplingIntervalSeconds {
             return false
         }
         if elapsed >= maximumKeyframeInterval {
@@ -437,7 +436,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             from: lastCapturedTransform,
             to: frame.camera.transform
         )
-        return translation >= minimumKeyframeTranslation || rotation >= minimumKeyframeRotation
+        return translation >= captureProfile.minimumTranslationMeters || rotation >= captureProfile.minimumRotationRadians
     }
 
     private func translationDistance(from lhs: simd_float4x4, to rhs: simd_float4x4) -> Float {

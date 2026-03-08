@@ -17,16 +17,16 @@ struct ScanStatusPill: View {
         HStack(spacing: 6) {
             Circle()
                 .fill(dotColor)
-                .frame(width: 8, height: 8)
+                .frame(width: 6, height: 6)
 
             Text(label)
                 .font(SpatialFont.caption)
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.9))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+        .padding(.vertical, 7)
+        .background(Color.elevatedSurface.opacity(0.9), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 0.5))
     }
 
     private var dotColor: Color {

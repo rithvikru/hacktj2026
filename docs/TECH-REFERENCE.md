@@ -57,7 +57,8 @@ Selection heuristic: prioritize frames with high translational movement or signi
 ### 6.1 Geometry Stack Priority Order
 
 1. **ARKit + RoomPlan** — fast parametric scaffold (immediate, on-device)
-2. **DA3 (Depth Anything 3)** — feed-forward metric depth estimation from arbitrary views
+2. **ARKit LiDAR depth + pose-diverse multi-view fusion** — current implementation default for delayed geometry
+3. **DA3 / modern feed-forward multi-view geometry** — refinement path when LiDAR depth is missing or insufficient
 3. **COLMAP-class SfM** — only when pose recovery or validation is needed
 4. **3D Gaussian Splatting** — high-fidelity saved-room viewing
 
@@ -70,6 +71,12 @@ Selection heuristic: prioritize frames with high translational movement or signi
 - Can operate pose-free when mobile poses exhibit drift (e.g., feature-poor walls)
 - Eliminates the need for iterative bundle adjustment, producing dense point clouds directly
 - Massive speedup over traditional SfM for the delayed reconstruction SLA (1-5 min target)
+
+Implementation note:
+
+- The current backend now uses **ARKit-depth-first reconstruction** as the main path because uploaded rooms already contain metric LiDAR depth and confidence maps for each frame.
+- Monocular depth remains a fallback for frames without usable LiDAR depth.
+- See [reconstruction-research-and-fixes.md](/Users/rithvikr/projects/hacktj2026/docs/reconstruction-research-and-fixes.md) for the rationale and the concrete pipeline changes.
 
 ### 6.3 3D Gaussian Splatting (3DGS)
 
@@ -97,7 +104,7 @@ General approach: use pre-trained 2D vision-language models (CLIP, OpenSeg, LSeg
 1. Client sends keyframes to backend
 2. **Grounding DINO** (arxiv 2303.05499): text-conditioned region proposals from arbitrary query strings
 3. **SAM 2** (arxiv 2408.00714): refines bounding boxes into precise instance masks
-4. Back-projection: 2D masks -> 3D world coords using DA3 depth maps + camera poses
+4. Back-projection: 2D masks -> 3D world coords using ARKit depth first, then DA3/fallback depth + camera poses
 5. Return ranked candidates with confidence + explanation to client
 6. Target latency: 3-10s (requires pre-warmed GPU instances)
 

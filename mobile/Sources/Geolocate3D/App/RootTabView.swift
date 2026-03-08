@@ -8,10 +8,10 @@ struct RootTabView: View {
 
         TabView(selection: $nav.selectedTab) {
             HomeStack()
-                .tabItem { Label("Spaces", systemImage: "square.grid.2x2.fill") }
+                .tabItem { Label("Spaces", systemImage: "square.grid.2x2") }
                 .tag(0)
             SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(1)
         }
         .tint(.spatialCyan)
@@ -34,12 +34,12 @@ struct RootTabView: View {
             case .queryConsole(let roomID):
                 QueryConsoleView(roomID: roomID)
                     .presentationDetents([.medium, .large])
-                    .presentationCornerRadius(32)
-                    .presentationBackground(.ultraThinMaterial)
+                    .presentationCornerRadius(24)
+                    .presentationBackground(Color.obsidian)
             case .scanResults(let roomID):
                 ScanResultsStubView(roomID: roomID)
                     .presentationDetents([.height(400)])
-                    .presentationCornerRadius(32)
+                    .presentationCornerRadius(24)
             case .objectDetail(let id):
                 ObjectDetailStubView(observationID: id)
                     .presentationDetents([.medium])

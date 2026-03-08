@@ -2,6 +2,7 @@ import SwiftUI
 
 struct QueryConsoleView: View {
     let roomID: UUID?
+    var onFocusSemanticObject: ((String) -> Void)?
     @Environment(\.modelContext) private var modelContext
     @Environment(BackendClient.self) private var backendClient
     @State private var viewModel = QueryViewModel()
@@ -18,16 +19,16 @@ struct QueryConsoleView: View {
                         viewModel.toggleVoiceInput()
                     } label: {
                         Image(systemName: viewModel.isListening ? "mic.fill" : "mic")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(viewModel.isListening ? .black : .white)
-                            .frame(width: 44, height: 44)
-                            .background(viewModel.isListening ? Color.spatialCyan : .glassWhite)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(viewModel.isListening ? .white : .dimLabel)
+                            .frame(width: 40, height: 40)
+                            .background(viewModel.isListening ? Color.spatialCyan.opacity(0.8) : Color.white.opacity(0.06))
                             .clipShape(Circle())
                     }
 
                     if viewModel.isListening {
                         AnimatedWaveform()
-                            .frame(height: 24)
+                            .frame(height: 20)
                     } else {
                         TextField("Where are my keys?", text: $queryText)
                             .font(SpatialFont.body)
@@ -46,7 +47,7 @@ struct QueryConsoleView: View {
                             submitQuery()
                         } label: {
                             Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 32))
+                                .font(.system(size: 28))
                                 .foregroundStyle(.spatialCyan)
                         }
                     }
@@ -54,39 +55,46 @@ struct QueryConsoleView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Divider().overlay(Color.glassEdge)
+                Rectangle()
+                    .fill(Color.white.opacity(0.04))
+                    .frame(height: 0.5)
 
                 // Results / History
                 ScrollView {
-                    if !viewModel.conversation.isEmpty {
-                        VStack(spacing: 12) {
+                    LazyVStack(spacing: 12) {
+                        if !viewModel.conversation.isEmpty {
                             ForEach(viewModel.conversation) { entry in
                                 QueryConversationBubble(entry: entry)
                             }
                         }
-                        .padding(16)
-                    }
 
-                    if let result = viewModel.currentResult {
-                        QueryResultView(result: result)
-                            .padding(16)
-                    }
-
-                    if viewModel.isProcessing {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                                .tint(.spatialCyan)
-                            Text("Thinking through the room...")
-                                .font(SpatialFont.caption)
-                                .foregroundStyle(.dimLabel)
+                        if let result = viewModel.currentResult {
+                            QueryResultView(result: result)
+                                .onTapGesture {
+                                    // When tapped, focus nearest semantic object
+                                    if let focusHandler = onFocusSemanticObject {
+                                        focusHandler(result.label)
+                                    }
+                                }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
+
+                        if viewModel.isProcessing {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.spatialCyan)
+                                Text("Thinking through the room...")
+                                    .font(SpatialFont.caption)
+                                    .foregroundStyle(.dimLabel)
+                            }
+                            .padding(.bottom, 12)
+                        }
                     }
+                    .padding(16)
 
                     // Suggestions
                     if viewModel.currentResult == nil && queryText.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("Suggestions")
                                 .font(SpatialFont.caption)
                                 .foregroundStyle(.dimLabel)
@@ -98,14 +106,14 @@ struct QueryConsoleView: View {
                                 } label: {
                                     Text(suggestion)
                                         .font(SpatialFont.subheadline)
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 16)
+                                        .foregroundStyle(.white.opacity(0.8))
+                                        .padding(.horizontal, 14)
                                         .padding(.vertical, 10)
-                                        .background(.glassWhite, in: Capsule())
+                                        .background(Color.elevatedSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 }
                             }
                         }
-                        .padding(.top, 16)
+                        .padding(.top, 8)
                     }
 
                     // Query history
@@ -119,7 +127,7 @@ struct QueryConsoleView: View {
                                 QueryHistoryRow(entry: entry)
                             }
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 20)
                     }
                 }
             }
@@ -152,7 +160,7 @@ private struct QueryConversationBubble: View {
     let entry: QueryConversationEntry
 
     var body: some View {
-        VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 6) {
+        VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             Text(entry.role == .user ? "You" : "Assistant")
                 .font(SpatialFont.caption)
                 .foregroundStyle(.dimLabel)
@@ -170,14 +178,14 @@ private struct QueryConversationBubble: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: entry.role == .user ? .trailing : .leading)
-        .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(bubbleBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, entry.role == .user ? 40 : 0)
     }
 
     private var bubbleBackground: AnyShapeStyle {
         if entry.role == .user {
-            return AnyShapeStyle(Color.glassWhite)
+            return AnyShapeStyle(Color.spatialCyan.opacity(0.1))
         }
-        return AnyShapeStyle(.ultraThinMaterial)
+        return AnyShapeStyle(Color.elevatedSurface)
     }
 }

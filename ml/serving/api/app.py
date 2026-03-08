@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import tempfile
 import zipfile
@@ -112,9 +113,24 @@ class RoomAssetsResponseDTO(APIDTOModel):
     reconstruction_status: str
     room_usdz_url: str | None = None
     dense_asset_url: str | None = None
+    dense_asset_kind: str | None = None
+    dense_renderer: str | None = None
+    dense_photoreal_ready: bool = False
+    dense_training_backend: str | None = None
+    dense_dataset_manifest_url: str | None = None
+    dense_transforms_url: str | None = None
+    dense_diagnostics_url: str | None = None
     scene_graph_version: int = 0
     frame_bundle_url: str | None = None
     updated_at: str
+
+
+class SemanticSceneResponseDTO(APIDTOModel):
+    room_id: str
+    scene_version: int = 0
+    generated_at: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    objects: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RouteRequestDTO(APIDTOModel):
@@ -418,6 +434,18 @@ def assets(room_id: str):
     if not room:
         return {"status": "pending"}
     return {"status": room.reconstruction_status, **room.reconstruction_assets}
+
+
+@app.get("/rooms/{room_id}/semantic-objects", response_model=SemanticSceneResponseDTO)
+def semantic_objects(room_id: str) -> SemanticSceneResponseDTO:
+    scene_path = Path("data/rooms") / room_id / "reconstruction" / "semantic_scene.json"
+    if not scene_path.exists():
+        return SemanticSceneResponseDTO(room_id=room_id, scene_version=0, generated_at=None, objects=[])
+    payload = json.loads(scene_path.read_text(encoding="utf-8"))
+    payload.setdefault("room_id", room_id)
+    payload.setdefault("scene_version", 1)
+    payload.setdefault("objects", [])
+    return SemanticSceneResponseDTO.model_validate(payload)
 
 
 async def _save_upload(upload: UploadFile, destination: Path) -> None:

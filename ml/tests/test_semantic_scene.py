@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+from PIL import Image
+
+from reconstruction.objects.semantic_scene import build_semantic_scene
+
+
+def test_build_semantic_scene_writes_json_and_low_poly_meshes(
+    tmp_path: Path,
+    monkeypatch,
+):
+    frame_dir = tmp_path / "frames"
+    images_dir = frame_dir / "images"
+    depth_dir = frame_dir / "depth"
+    confidence_dir = frame_dir / "confidence"
+    images_dir.mkdir(parents=True)
+    depth_dir.mkdir()
+    confidence_dir.mkdir()
+
+    image = np.full((32, 32, 3), 180, dtype=np.uint8)
+    depth = np.full((8, 8), 1200, dtype=np.uint16)
+    confidence = np.full((8, 8), 2, dtype=np.uint8)
+
+    frames = []
+    for index in range(2):
+        image_path = images_dir / f"frame-{index}.jpg"
+        depth_path = depth_dir / f"frame-{index}.png"
+        confidence_path = confidence_dir / f"frame-{index}.png"
+        Image.fromarray(image).save(image_path)
+        Image.fromarray(depth).save(depth_path)
+        Image.fromarray(confidence).save(confidence_path)
+        frames.append(
+            {
+                "frame_id": f"frame-{index}",
+                "image_path": f"images/frame-{index}.jpg",
+                "depth_path": f"depth/frame-{index}.png",
+                "confidence_map_path": f"confidence/frame-{index}.png",
+                "camera_transform16": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0 + (index * 0.03),
+                    0.0,
+                    0.0,
+                    1.0,
+                ],
+                "intrinsics9": [32.0, 0.0, 0.0, 0.0, 32.0, 0.0, 16.0, 16.0, 1.0],
+            }
+        )
+
+    class Detection:
+        def __init__(self, image_path: Path):
+            self.image_path = str(image_path)
+            self.bbox_xyxy_norm = [0.25, 0.25, 0.75, 0.75]
+            self.confidence = 0.82
+            self.label = "phone"
+
+    class Mask:
+        def __init__(self):
+            self.mask = np.zeros((32, 32), dtype=bool)
+            self.mask[8:24, 8:24] = True
+
+    monkeypatch.setattr(
+        "reconstruction.objects.semantic_scene.detect",
+        lambda image_paths, *args, **kwargs: [Detection(path) for path in image_paths],
+    )
+    monkeypatch.setattr(
+        "reconstruction.objects.semantic_scene.segment",
+        lambda image, boxes: [Mask() for _ in boxes],
+    )
+
+    output_dir = tmp_path / "reconstruction"
+    result = build_semantic_scene(
+        room_id="room-1",
+        frame_dir=frame_dir,
+        frames=frames,
+        output_dir=output_dir,
+        label_inventory=["phone"],
+    )
+
+    scene = result["scene"]
+    assert len(scene["objects"]) == 1
+    semantic_json = output_dir / "semantic_scene.json"
+    assert semantic_json.exists()
+
+    payload = json.loads(semantic_json.read_text())
+    assert payload["objects"][0]["label"] == "phone"
+    mesh_url = payload["objects"][0]["mesh_asset_url"]
+    mesh_name = mesh_url.rsplit("/", 1)[-1]
+    assert (output_dir / mesh_name).exists()
+    assert payload["objects"][0]["support_relation"]["type"] == "supported_by_floor"
+    assert len(result["observations"]) == 1
