@@ -11,11 +11,6 @@ from PIL import Image
 from reconstruction.da3.run_pipeline import MAX_RECONSTRUCTION_FRAMES, select_reconstruction_frames
 
 
-MAX_DENSE_DATASET_FRAMES = int(
-    os.getenv("DENSE_DATASET_MAX_FRAMES", str(max(72, MAX_RECONSTRUCTION_FRAMES)))
-)
-
-
 @dataclass(frozen=True)
 class DenseDatasetExport:
     dataset_dir: Path
@@ -32,7 +27,7 @@ def export_dense_dataset(
     frames: list[dict],
     reconstruction_dir: Path,
     frame_manifest: dict | None = None,
-    max_frames: int = MAX_DENSE_DATASET_FRAMES,
+    max_frames: int | None = None,
 ) -> DenseDatasetExport:
     """Export a posed-image dense dataset for external splat trainers.
 
@@ -43,7 +38,8 @@ def export_dense_dataset(
     - reconstruction/dense_dataset_manifest.json
     """
 
-    selected = select_reconstruction_frames(frames, frame_dir, max_frames=max_frames)
+    resolved_max_frames = _resolve_dense_dataset_max_frames(frame_manifest, max_frames)
+    selected = select_reconstruction_frames(frames, frame_dir, max_frames=resolved_max_frames)
     if not selected:
         raise ValueError("No pose-valid frames available for dense dataset export.")
 
@@ -119,6 +115,7 @@ def export_dense_dataset(
         "images_dir": f"{dataset_dir.name}/images",
         "transforms_json": f"{dataset_dir.name}/transforms.json",
         "frame_count": len(exported_frames),
+        "frame_budget": resolved_max_frames,
         "selected_frame_ids": selected_frame_ids,
         "capture_profile": (frame_manifest or {}).get("capture_profile", {}),
     }
@@ -136,6 +133,30 @@ def export_dense_dataset(
         selected_frame_ids=selected_frame_ids,
         frame_count=len(exported_frames),
     )
+
+
+def _resolve_dense_dataset_max_frames(
+    frame_manifest: dict | None,
+    requested_max_frames: int | None,
+) -> int:
+    if requested_max_frames is not None:
+        return max(1, requested_max_frames)
+
+    env_value = os.getenv("DENSE_DATASET_MAX_FRAMES")
+    if env_value:
+        return max(1, int(env_value))
+
+    capture_profile = (frame_manifest or {}).get("capture_profile", {})
+    intended_use = str(capture_profile.get("intended_use") or "").lower()
+    target_overlap = str(capture_profile.get("target_overlap") or "").lower()
+
+    if intended_use == "photoreal_dense_reconstruction":
+        base_budget = max(96, MAX_RECONSTRUCTION_FRAMES)
+        if target_overlap == "high":
+            return max(120, base_budget)
+        return base_budget
+
+    return max(72, MAX_RECONSTRUCTION_FRAMES)
 
 
 def _materialize_asset(source: Path, destination: Path) -> None:

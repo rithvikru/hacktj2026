@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import math
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+POINTCLOUD_WORKERS = max(1, int(os.getenv("POINTCLOUD_WORKERS", str(min(os.cpu_count() or 1, 16)))))
 
 
 @dataclass
@@ -47,88 +50,41 @@ def generate_pointcloud(
         for frame_meta in frame_metadata
     }
 
-    for depth_result in depth_results:
-        frame_meta = None
-        frame_id = getattr(depth_result, "frame_id", None)
-        if frame_id:
-            frame_meta = metadata_by_id.get(str(frame_id))
-        if frame_meta is None:
-            frame_meta = metadata_by_name.get(Path(depth_result.image_path).name)
-        if frame_meta is None:
-            logger.warning("Skipping depth result without matching frame metadata: %s", depth_result.image_path)
-            continue
-
-        intrinsics_9 = frame_meta.get(
-            "intrinsics9", frame_meta.get("intrinsics_9", [])
-        )
-        extrinsics_16 = frame_meta.get(
-            "cameraTransform16", frame_meta.get("camera_transform16", [])
-        )
-
-        if len(intrinsics_9) != 9 or len(extrinsics_16) != 16:
-            logger.warning("Skipping frame with invalid intrinsics/extrinsics")
-            continue
-
-        K = np.array(intrinsics_9, dtype=np.float32).reshape(3, 3, order="F")
-        T = np.array(extrinsics_16, dtype=np.float32).reshape(4, 4, order="F")
-
-        depth = depth_result.depth_map
-        h, w = depth.shape
-
-        confidence = getattr(depth_result, "confidence_map", None)
-        if confidence is not None and confidence.shape != depth.shape:
-            confidence = np.array(
-                Image.fromarray(confidence).resize((w, h), Image.NEAREST),
-                dtype=np.uint8,
+    if POINTCLOUD_WORKERS == 1 or len(depth_results) <= 1:
+        projected_chunks = [
+            _project_depth_result(
+                depth_result=depth_result,
+                metadata_by_id=metadata_by_id,
+                metadata_by_name=metadata_by_name,
+                min_depth=min_depth,
+                max_depth=max_depth,
+                min_confidence=min_confidence,
+                max_points_per_frame=max_points_per_frame,
+            )
+            for depth_result in depth_results
+        ]
+    else:
+        max_workers = min(POINTCLOUD_WORKERS, len(depth_results))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            projected_chunks = list(
+                executor.map(
+                    lambda candidate: _project_depth_result(
+                        depth_result=candidate,
+                        metadata_by_id=metadata_by_id,
+                        metadata_by_name=metadata_by_name,
+                        min_depth=min_depth,
+                        max_depth=max_depth,
+                        min_confidence=min_confidence,
+                        max_points_per_frame=max_points_per_frame,
+                    ),
+                    depth_results,
+                )
             )
 
-        # Load RGB
-        image = np.array(
-            Image.open(depth_result.image_path).convert("RGB").resize((w, h))
-        )
-
-        # Create pixel grid
-        u_coords, v_coords = np.meshgrid(np.arange(w), np.arange(h))
-
-        # Filter valid depths
-        valid = (depth > min_depth) & (depth < max_depth)
-        if confidence is not None:
-            valid &= confidence >= min_confidence
-        valid_count = int(valid.sum())
-        if valid_count == 0:
+    for chunk in projected_chunks:
+        if chunk is None:
             continue
-
-        sample_stride = max(
-            1,
-            int(math.sqrt(valid_count / max_points_per_frame)),
-        )
-        if sample_stride > 1:
-            sparse_mask = np.zeros_like(valid, dtype=bool)
-            sparse_mask[::sample_stride, ::sample_stride] = True
-            valid &= sparse_mask
-
-        u_valid = u_coords[valid].astype(np.float32)
-        v_valid = v_coords[valid].astype(np.float32)
-        d_valid = depth[valid]
-        colors_valid = image[valid]
-
-        # Unproject to camera space
-        rgb_width, rgb_height = depth_result.original_size
-        scale_x = w / max(float(rgb_width), 1.0)
-        scale_y = h / max(float(rgb_height), 1.0)
-        fx = K[0, 0] * scale_x
-        fy = K[1, 1] * scale_y
-        cx = K[0, 2] * scale_x
-        cy = K[1, 2] * scale_y
-        x_cam = (u_valid - cx) * d_valid / fx
-        y_cam = (v_valid - cy) * d_valid / fy
-        z_cam = d_valid
-
-        points_cam = np.stack(
-            [x_cam, y_cam, z_cam, np.ones_like(x_cam)], axis=-1
-        )
-        points_world = (T @ points_cam.T).T[:, :3]
-
+        points_world, colors_valid = chunk
         all_points.append(points_world)
         all_colors.append(colors_valid)
 
@@ -147,6 +103,84 @@ def generate_pointcloud(
     return PointCloud(
         points=points.astype(np.float32), colors=colors.astype(np.uint8)
     )
+
+
+def _project_depth_result(
+    *,
+    depth_result,
+    metadata_by_id: dict[str, dict],
+    metadata_by_name: dict[str, dict],
+    min_depth: float,
+    max_depth: float,
+    min_confidence: int,
+    max_points_per_frame: int,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    frame_meta = None
+    frame_id = getattr(depth_result, "frame_id", None)
+    if frame_id:
+        frame_meta = metadata_by_id.get(str(frame_id))
+    if frame_meta is None:
+        frame_meta = metadata_by_name.get(Path(depth_result.image_path).name)
+    if frame_meta is None:
+        logger.warning("Skipping depth result without matching frame metadata: %s", depth_result.image_path)
+        return None
+
+    intrinsics_9 = frame_meta.get("intrinsics9", frame_meta.get("intrinsics_9", []))
+    extrinsics_16 = frame_meta.get("cameraTransform16", frame_meta.get("camera_transform16", []))
+    if len(intrinsics_9) != 9 or len(extrinsics_16) != 16:
+        logger.warning("Skipping frame with invalid intrinsics/extrinsics")
+        return None
+
+    K = np.array(intrinsics_9, dtype=np.float32).reshape(3, 3, order="F")
+    T = np.array(extrinsics_16, dtype=np.float32).reshape(4, 4, order="F")
+
+    depth = depth_result.depth_map
+    h, w = depth.shape
+
+    confidence = getattr(depth_result, "confidence_map", None)
+    if confidence is not None and confidence.shape != depth.shape:
+        confidence = np.array(
+            Image.fromarray(confidence).resize((w, h), Image.NEAREST),
+            dtype=np.uint8,
+        )
+
+    image = np.array(
+        Image.open(depth_result.image_path).convert("RGB").resize((w, h))
+    )
+    u_coords, v_coords = np.meshgrid(np.arange(w), np.arange(h))
+
+    valid = (depth > min_depth) & (depth < max_depth)
+    if confidence is not None:
+        valid &= confidence >= min_confidence
+    valid_count = int(valid.sum())
+    if valid_count == 0:
+        return None
+
+    sample_stride = max(1, int(math.sqrt(valid_count / max_points_per_frame)))
+    if sample_stride > 1:
+        sparse_mask = np.zeros_like(valid, dtype=bool)
+        sparse_mask[::sample_stride, ::sample_stride] = True
+        valid &= sparse_mask
+
+    u_valid = u_coords[valid].astype(np.float32)
+    v_valid = v_coords[valid].astype(np.float32)
+    d_valid = depth[valid]
+    colors_valid = image[valid]
+
+    rgb_width, rgb_height = depth_result.original_size
+    scale_x = w / max(float(rgb_width), 1.0)
+    scale_y = h / max(float(rgb_height), 1.0)
+    fx = K[0, 0] * scale_x
+    fy = K[1, 1] * scale_y
+    cx = K[0, 2] * scale_x
+    cy = K[1, 2] * scale_y
+    x_cam = (u_valid - cx) * d_valid / fx
+    y_cam = (v_valid - cy) * d_valid / fy
+    z_cam = d_valid
+
+    points_cam = np.stack([x_cam, y_cam, z_cam, np.ones_like(x_cam)], axis=-1)
+    points_world = (T @ points_cam.T).T[:, :3]
+    return points_world, colors_valid
 
 
 def _voxel_downsample(

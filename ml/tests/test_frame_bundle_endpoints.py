@@ -3,9 +3,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from serving.api.app import app
+import serving.api.app as app_module
 from serving.storage.room_store import RoomStore
-import serving.workers.reconstruct_room as reconstruct_module
 
 
 def test_upload_frame_bundle_persists_room_state_and_allows_reconstruct(tmp_path: Path, monkeypatch):
@@ -14,7 +13,7 @@ def test_upload_frame_bundle_persists_room_state_and_allows_reconstruct(tmp_path
     monkeypatch.chdir(tmp_path)
     RoomStore.reset()
 
-    client = TestClient(app)
+    client = TestClient(app_module.app)
     room_id = "room-1"
 
     create_response = client.post("/rooms", json={"roomId": room_id, "name": "Bedroom"})
@@ -78,14 +77,18 @@ def test_upload_frame_bundle_persists_room_state_and_allows_reconstruct(tmp_path
     assert len(room.frames) == 1
     assert room.frames[0]["image_path"] == "images/f1.jpg"
 
-    async def fake_reconstruct_room(room_id: str, frame_dir: Path, frames: list[dict], room_store) -> None:
-        return None
+    enqueued_room_ids: list[str] = []
 
-    monkeypatch.setattr(reconstruct_module, "reconstruct_room", fake_reconstruct_room)
+    def fake_enqueue_reconstruction(room_id: str) -> bool:
+        enqueued_room_ids.append(room_id)
+        return True
+
+    monkeypatch.setattr(app_module, "enqueue_reconstruction", fake_enqueue_reconstruction)
 
     reconstruct_response = client.post(f"/rooms/{room_id}/reconstruct")
     assert reconstruct_response.status_code == 200
     assert reconstruct_response.json()["status"] == "queued"
+    assert enqueued_room_ids == [room_id]
 
     queued_room = store.get(room_id)
     assert queued_room is not None

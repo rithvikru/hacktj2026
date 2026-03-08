@@ -10,6 +10,8 @@ enum ViewerMode: String, CaseIterable, Sendable {
 @Observable
 @MainActor
 final class RoomTwinViewModel {
+    private static let assetPollIntervalNanoseconds: UInt64 = 2_000_000_000
+
     let roomID: UUID
     var roomName: String = "Room"
     var observations: [ObjectObservation] = []
@@ -44,6 +46,7 @@ final class RoomTwinViewModel {
     var showHypothesesOverlay: Bool = false
 
     private let persistence = RoomPersistenceService()
+    private var assetPollingTask: Task<Void, Never>?
 
     init(roomID: UUID) {
         self.roomID = roomID
@@ -79,13 +82,15 @@ final class RoomTwinViewModel {
             showArchitectureShell = true
             showScaffold = true
             showDense = false
-            showObjects = true
+            showObjects = false
         case .dense:
+            // Until a real photoreal dense asset exists, fall back to the room shell
+            // plus semantic object highlights instead of showing the voxel preview cloud.
             showSemanticObjects = true
             showDensePoints = false
             showArchitectureShell = true
             showScaffold = true
-            showDense = false
+            showDense = densePhotorealReady
             showObjects = false
         case .architecture:
             showSemanticObjects = false
@@ -156,6 +161,31 @@ final class RoomTwinViewModel {
         await loadSemanticScene(roomID: roomID, backendClient: backendClient)
     }
 
+    func startAssetPolling(modelContext: ModelContext, backendClient: BackendClient) {
+        assetPollingTask?.cancel()
+        assetPollingTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                await self.refreshAssets(modelContext: modelContext, backendClient: backendClient)
+                if self.semanticObjects.isEmpty {
+                    await self.loadSemanticScene(roomID: self.roomID, backendClient: backendClient)
+                }
+
+                if !self.shouldContinuePolling {
+                    break
+                }
+
+                try? await Task.sleep(nanoseconds: Self.assetPollIntervalNanoseconds)
+            }
+        }
+    }
+
+    func stopAssetPolling() {
+        assetPollingTask?.cancel()
+        assetPollingTask = nil
+    }
+
     func refreshAssets(modelContext: ModelContext, backendClient: BackendClient) async {
         var descriptor = FetchDescriptor<RoomRecord>(
             predicate: #Predicate { $0.id == roomID }
@@ -183,9 +213,11 @@ final class RoomTwinViewModel {
             if let remoteAssetPath = assets.denseAssetURL {
                 denseAssetRemoteURL = try? backendClient.absoluteAssetURL(for: remoteAssetPath)
             }
+            applyViewerMode(viewerMode)
 
             let assetPath = preferredDenseAssetPath(from: assets, fallback: room.denseAssetPath)
             guard let assetPath else {
+                updateStatusMessage(denseAssetAvailable: false)
                 try? modelContext.save()
                 return
             }
@@ -193,6 +225,7 @@ final class RoomTwinViewModel {
             if let localAssetURL = resolveLocalAssetURL(from: assetPath) {
                 denseAssetURL = localAssetURL
                 room.denseAssetPath = localAssetURL.path
+                updateStatusMessage(denseAssetAvailable: true)
                 try? modelContext.save()
                 return
             }
@@ -206,11 +239,8 @@ final class RoomTwinViewModel {
             )
             room.denseAssetPath = downloadedURL.path
             denseAssetURL = downloadedURL
+            updateStatusMessage(denseAssetAvailable: true)
             try? modelContext.save()
-
-            if denseAssetURL != nil {
-                statusMessage = densePhotorealReady ? "Photoreal room twin ready" : "Dense room preview ready"
-            }
         } catch {
             // Dense unavailable is fine if semantic objects exist
             if !semanticObjects.isEmpty {
@@ -239,5 +269,42 @@ final class RoomTwinViewModel {
         guard let path else { return nil }
         guard FileManager.default.fileExists(atPath: path) else { return nil }
         return URL(fileURLWithPath: path)
+    }
+
+    private var shouldContinuePolling: Bool {
+        switch reconstructionStatus {
+        case .pending, .uploading, .processing:
+            return true
+        case .complete:
+            return false
+        case .failed:
+            return denseAssetURL == nil && semanticObjects.isEmpty
+        }
+    }
+
+    private func updateStatusMessage(denseAssetAvailable: Bool) {
+        if denseAssetAvailable {
+            if densePhotorealReady {
+                statusMessage = "Photoreal room twin ready"
+            } else if reconstructionStatus == .processing {
+                statusMessage = "Fast room preview ready; photoreal twin still processing"
+            } else {
+                statusMessage = "Dense room preview ready"
+            }
+            return
+        }
+
+        switch reconstructionStatus {
+        case .pending:
+            statusMessage = semanticObjects.isEmpty ? "Preparing room geometry" : "Semantic room preview ready"
+        case .uploading:
+            statusMessage = "Uploading scan assets for reconstruction"
+        case .processing:
+            statusMessage = semanticObjects.isEmpty ? "Building room representation" : "Semantic room preview ready"
+        case .complete:
+            statusMessage = semanticObjects.isEmpty ? nil : "Semantic room preview ready"
+        case .failed:
+            statusMessage = semanticObjects.isEmpty ? "Dense reconstruction failed" : "Semantic room preview ready"
+        }
     }
 }

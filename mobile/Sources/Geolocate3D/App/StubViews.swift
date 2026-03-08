@@ -344,12 +344,17 @@ struct SettingsView: View {
                             await backendClient.checkConnection()
                             statusMessage = backendClient.isConnected
                                 ? "Backend is reachable."
-                                : "Backend is not reachable from this device."
+                                : backendClient.lastConnectionErrorDescription ?? "Backend is not reachable from this device."
                         }
                     }
                     Text("Current: \(backendClient.baseURLString)")
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(.dimLabel)
+                    if let statusCode = backendClient.lastConnectionStatusCode {
+                        Text("Last HTTP status: \(statusCode)")
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(.dimLabel)
+                    }
                 }
                 Section("Status") {
                     Label(

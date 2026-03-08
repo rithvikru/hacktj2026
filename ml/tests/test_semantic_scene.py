@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from reconstruction.objects.semantic_scene import build_semantic_scene
+from reconstruction.objects.semantic_scene import build_semantic_scene, _snap_payload_to_support
 
 
 def test_build_semantic_scene_writes_json_and_low_poly_meshes(
@@ -78,6 +78,10 @@ def test_build_semantic_scene_writes_json_and_low_poly_meshes(
         lambda image_paths, *args, **kwargs: [Detection(path) for path in image_paths],
     )
     monkeypatch.setattr(
+        "reconstruction.objects.semantic_scene.detect_regions",
+        lambda image_path, regions, *args, **kwargs: [Detection(image_path)],
+    )
+    monkeypatch.setattr(
         "reconstruction.objects.semantic_scene.segment",
         lambda image, boxes: [Mask() for _ in boxes],
     )
@@ -103,3 +107,36 @@ def test_build_semantic_scene_writes_json_and_low_poly_meshes(
     assert (output_dir / mesh_name).exists()
     assert payload["objects"][0]["support_relation"]["type"] == "supported_by_floor"
     assert len(result["observations"]) == 1
+    observation = result["observations"][0]
+    assert observation["support_relation"]["type"] == "supported_by_floor"
+    assert observation["base_anchor_xyz"]
+    assert observation["center_xyz"]
+
+
+def test_snap_payload_to_support_places_small_object_on_surface():
+    payload = {
+        "label": "bottle",
+        "center_xyz": [1.0, 1.0, 2.0],
+        "extent_xyz": [0.5, 0.5, 0.5],
+        "base_anchor_xyz": [1.0, 0.8, 2.0],
+        "support_anchor_xyz": [1.0, 0.8, 2.0],
+        "yaw_radians": 0.0,
+        "world_transform16": [1.0, 0.0, 0.0, 0.0,
+                              0.0, 1.0, 0.0, 0.0,
+                              0.0, 0.0, 1.0, 0.0,
+                              1.0, 1.0, 2.0, 1.0],
+        "footprint_xyz": [],
+    }
+    support_relation = {
+        "type": "supported_by",
+        "support_object_id": "table-1",
+        "support_label": "table",
+        "support_height_y": 0.72,
+    }
+
+    _snap_payload_to_support(payload, support_relation)
+
+    assert payload["base_anchor_xyz"][1] == 0.72
+    assert payload["support_anchor_xyz"][1] == 0.72
+    assert payload["center_xyz"][1] > 0.72
+    assert np.allclose(payload["extent_xyz"], [0.14, 0.06, 0.14], atol=1e-6)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from heapq import heappop, heappush
 from math import ceil, sqrt
@@ -20,6 +21,18 @@ class Grid:
     width: int
     height: int
     blocked: list[list[bool]]
+
+
+@dataclass
+class TargetContext:
+    object_id: str | None
+    label: str | None
+    world_transform16: list[float] | None
+    center_xyz: tuple[float, float, float] | None
+    extent_xyz: tuple[float, float, float] | None
+    base_anchor_xyz: tuple[float, float, float] | None
+    footprint_xz: list[tuple[float, float]]
+    support_relation: dict | None
 
 
 def tf_to_xyz(tf):
@@ -52,6 +65,13 @@ def scene_graph_to_obstacles(scene_graph):
         tf = node.get("worldTransform16") or node.get("world_transform16")
         pos = tf_to_xyz(tf)
         if pos is None:
+            continue
+        attrs = _parse_attributes(node.get("attributesJson") or node.get("attributes_json"))
+        footprint_xz = _normalize_footprint(attrs)
+        if footprint_xz:
+            xs = [point[0] for point in footprint_xz]
+            zs = [point[1] for point in footprint_xz]
+            obs.append(Rect(min(xs), min(zs), max(xs), max(zs)))
             continue
         ext = node.get("extentXyz") or node.get("extent_xyz") or [0.8, 0.8, 0.8]
         if len(ext) < 3:
@@ -235,45 +255,304 @@ def simplify(path):
     return out
 
 
-def find_target_tf(room, target_label=None, target_world_transform16=None):
-    if target_world_transform16:
-        return target_world_transform16
-    if not target_label:
+def _parse_attributes(raw):
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _normalize_xyz(value):
+    if not isinstance(value, (list, tuple)) or len(value) < 3:
         return None
-    label_lower = target_label.lower()
+    return float(value[0]), float(value[1]), float(value[2])
+
+
+def _normalize_extent(value):
+    xyz = _normalize_xyz(value)
+    if xyz is None:
+        return None
+    return max(xyz[0], 0.02), max(xyz[1], 0.02), max(xyz[2], 0.02)
+
+
+def _normalize_footprint(payload):
+    raw = (
+        payload.get("footprintXyz")
+        or payload.get("footprint_xyz")
+        or payload.get("footprintXZ")
+        or payload.get("footprint_xz")
+    )
+    if not isinstance(raw, list):
+        return []
+    footprint = []
+    for point in raw:
+        xyz = _normalize_xyz(point)
+        if xyz is not None:
+            footprint.append((xyz[0], xyz[2]))
+    return footprint
+
+
+def _normalize_support_relation(payload):
+    relation = payload.get("supportRelation") or payload.get("support_relation")
+    return relation if isinstance(relation, dict) else None
+
+
+def _context_from_observation(observation):
+    world_transform16 = observation.get("worldTransform16") or observation.get("world_transform16")
+    center_xyz = _normalize_xyz(observation.get("centerXyz") or observation.get("center_xyz"))
+    extent_xyz = _normalize_extent(observation.get("extentXyz") or observation.get("extent_xyz"))
+    base_anchor_xyz = _normalize_xyz(
+        observation.get("baseAnchorXyz") or observation.get("base_anchor_xyz")
+    )
+    return TargetContext(
+        object_id=observation.get("id"),
+        label=observation.get("label"),
+        world_transform16=world_transform16,
+        center_xyz=center_xyz or tf_to_xyz(world_transform16),
+        extent_xyz=extent_xyz,
+        base_anchor_xyz=base_anchor_xyz,
+        footprint_xz=_normalize_footprint(observation),
+        support_relation=_normalize_support_relation(observation),
+    )
+
+
+def _context_from_node(node):
+    attrs = _parse_attributes(node.get("attributesJson") or node.get("attributes_json"))
+    world_transform16 = node.get("worldTransform16") or node.get("world_transform16")
+    return TargetContext(
+        object_id=node.get("id"),
+        label=node.get("label"),
+        world_transform16=world_transform16,
+        center_xyz=_normalize_xyz(attrs.get("centerXyz") or attrs.get("center_xyz")) or tf_to_xyz(world_transform16),
+        extent_xyz=_normalize_extent(node.get("extentXyz") or node.get("extent_xyz")),
+        base_anchor_xyz=_normalize_xyz(attrs.get("baseAnchorXyz") or attrs.get("base_anchor_xyz")),
+        footprint_xz=_normalize_footprint(attrs),
+        support_relation=_normalize_support_relation(attrs),
+    )
+
+
+def _fallback_target_context(target_world_transform16, target_label):
+    center_xyz = tf_to_xyz(target_world_transform16)
+    return TargetContext(
+        object_id=None,
+        label=target_label,
+        world_transform16=target_world_transform16,
+        center_xyz=center_xyz,
+        extent_xyz=None,
+        base_anchor_xyz=center_xyz,
+        footprint_xz=[],
+        support_relation=None,
+    )
+
+
+def _label_match_score(query_label, candidate_label):
+    if not query_label or not candidate_label:
+        return -1
+    query = query_label.lower()
+    candidate = candidate_label.lower()
+    if candidate == query:
+        return 3
+    if query in candidate:
+        return 2
+    query_tokens = set(query.split())
+    candidate_tokens = set(candidate.split())
+    if query_tokens and query_tokens <= candidate_tokens:
+        return 1
+    return -1
+
+
+def _distance_xz(a, b):
+    return sqrt((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2)
+
+
+def _resolve_target_context(room, target_label=None, target_world_transform16=None):
+    requested_xyz = tf_to_xyz(target_world_transform16)
+    candidates = []
+    for observation in room.observations:
+        context = _context_from_observation(observation)
+        score = _label_match_score(target_label, context.label) if target_label else 0
+        if target_label and score < 0:
+            continue
+        distance = _distance_xz(requested_xyz, context.center_xyz) if requested_xyz and context.center_xyz else 0.0
+        candidates.append((score, -distance, context))
+
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return candidates[0][2]
+
+    if target_label and room.scene_graph:
+        node_candidates = []
+        for node in room.scene_graph.get("nodes", []):
+            context = _context_from_node(node)
+            score = _label_match_score(target_label, context.label)
+            if score < 0:
+                continue
+            distance = _distance_xz(requested_xyz, context.center_xyz) if requested_xyz and context.center_xyz else 0.0
+            node_candidates.append((score, -distance, context))
+        if node_candidates:
+            node_candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+            return node_candidates[0][2]
+
+    if target_world_transform16:
+        return _fallback_target_context(target_world_transform16, target_label)
+    return None
+
+
+def _find_context_by_id(room, object_id):
+    if not object_id:
+        return None
+    for observation in room.observations:
+        if observation.get("id") == object_id:
+            return _context_from_observation(observation)
     if room.scene_graph:
         for node in room.scene_graph.get("nodes", []):
-            label = (node.get("label") or "").lower()
-            if label == label_lower or label_lower in label:
-                tf = node.get("worldTransform16") or node.get("world_transform16")
-                if tf:
-                    return tf
-    for obs in room.observations:
-        label = (obs.get("label") or "").lower()
-        if label == label_lower or label_lower in label:
-            tf = obs.get("worldTransform16") or obs.get("world_transform16")
-            if tf:
-                return tf
+            if node.get("id") == object_id:
+                return _context_from_node(node)
     return None
+
+
+def _resolve_support_context(room, target_context):
+    if target_context is None or not target_context.support_relation:
+        return None
+    relation = target_context.support_relation
+    support_object_id = relation.get("support_object_id")
+    if support_object_id:
+        return _find_context_by_id(room, support_object_id)
+    return None
+
+
+def _footprint_from_extent(center_xyz, extent_xyz):
+    if center_xyz is None or extent_xyz is None:
+        return []
+    half_x = extent_xyz[0] * 0.5
+    half_z = extent_xyz[2] * 0.5
+    x, _, z = center_xyz
+    return [
+        (x - half_x, z - half_z),
+        (x + half_x, z - half_z),
+        (x + half_x, z + half_z),
+        (x - half_x, z + half_z),
+    ]
+
+
+def _project_to_segment(point, start, end):
+    sx, sz = start
+    ex, ez = end
+    dx = ex - sx
+    dz = ez - sz
+    denom = dx * dx + dz * dz
+    if denom <= 1e-6:
+        return start
+    t = ((point[0] - sx) * dx + (point[1] - sz) * dz) / denom
+    t = clamp(t, 0.0, 1.0)
+    return sx + dx * t, sz + dz * t
+
+
+def _normalize_2d(vector):
+    length = sqrt(vector[0] ** 2 + vector[1] ** 2)
+    if length <= 1e-6:
+        return None
+    return vector[0] / length, vector[1] / length
+
+
+def _build_approach_candidates(start_xyz, target_context, support_context, clearance_m):
+    approach_context = support_context or target_context
+    if approach_context is None:
+        return []
+
+    footprint = list(approach_context.footprint_xz)
+    if not footprint:
+        footprint = _footprint_from_extent(approach_context.center_xyz, approach_context.extent_xyz)
+    if len(footprint) < 2:
+        return []
+
+    center_xyz = approach_context.center_xyz or target_context.center_xyz
+    if center_xyz is None:
+        return []
+    center_xz = (center_xyz[0], center_xyz[2])
+
+    anchor_xyz = target_context.base_anchor_xyz or target_context.center_xyz
+    if anchor_xyz is None and support_context is not None:
+        anchor_xyz = support_context.base_anchor_xyz or support_context.center_xyz
+    if anchor_xyz is None:
+        anchor_xyz = center_xyz
+    anchor_xz = (anchor_xyz[0], anchor_xyz[2])
+
+    candidates = []
+    loop = footprint + [footprint[0]]
+    for start, end in zip(loop, loop[1:]):
+        edge_point = _project_to_segment(anchor_xz, start, end)
+        outward = _normalize_2d((edge_point[0] - center_xz[0], edge_point[1] - center_xz[1]))
+        if outward is None:
+            midpoint = ((start[0] + end[0]) * 0.5, (start[1] + end[1]) * 0.5)
+            outward = _normalize_2d((midpoint[0] - center_xz[0], midpoint[1] - center_xz[1]))
+        if outward is None:
+            continue
+        approach = (
+            edge_point[0] + outward[0] * clearance_m,
+            edge_point[1] + outward[1] * clearance_m,
+        )
+        candidates.append(approach)
+
+    if not candidates and center_xz:
+        candidates.append(center_xz)
+
+    candidates.sort(key=lambda point: sqrt((point[0] - start_xyz[0]) ** 2 + (point[1] - start_xyz[2]) ** 2))
+    deduped = []
+    for candidate in candidates:
+        if any(sqrt((candidate[0] - existing[0]) ** 2 + (candidate[1] - existing[1]) ** 2) < 0.08 for existing in deduped):
+            continue
+        deduped.append(candidate)
+    return deduped
+
+
+def _goal_reason(target_context, support_context):
+    if support_context is not None:
+        return "support_edge"
+    if target_context and target_context.footprint_xz:
+        return "object_edge"
+    return "target_center"
 
 
 def plan_route(room, start_world_transform16, target_world_transform16=None, target_label=None, grid_resolution_m=0.20, obstacle_inflation_radius_m=0.25):
     start_xyz = tf_to_xyz(start_world_transform16)
-    target_tf = find_target_tf(room, target_label, target_world_transform16)
-    target_xyz = tf_to_xyz(target_tf)
     if start_xyz is None:
         return {"reachable": False, "reason": "invalid start transform", "waypoints": []}
+
+    target_context = _resolve_target_context(room, target_label, target_world_transform16)
+    if target_context is None:
+        return {"reachable": False, "reason": "target not found", "waypoints": []}
+    target_xyz = target_context.center_xyz or tf_to_xyz(target_context.world_transform16)
     if target_xyz is None:
         return {"reachable": False, "reason": "target not found", "waypoints": []}
 
+    support_context = _resolve_support_context(room, target_context)
+    approach_candidates = _build_approach_candidates(
+        start_xyz,
+        target_context,
+        support_context,
+        clearance_m=max(obstacle_inflation_radius_m + 0.30, 0.40),
+    )
+    goal_xyz = None
+    if approach_candidates:
+        goal_xyz = (approach_candidates[0][0], start_xyz[1], approach_candidates[0][1])
+    else:
+        goal_xyz = (target_xyz[0], start_xyz[1], target_xyz[2])
+
     obstacles = scene_graph_to_obstacles(room.scene_graph)
-    min_x, min_z, max_x, max_z = compute_bounds(start_xyz, target_xyz, obstacles)
+    min_x, min_z, max_x, max_z = compute_bounds(start_xyz, goal_xyz, obstacles)
     grid = build_grid(min_x, min_z, max_x, max_z, grid_resolution_m)
     rasterize_rects(grid, obstacles)
     inflate(grid, obstacle_inflation_radius_m)
 
     start_row, start_col = world_to_grid(grid, start_xyz[0], start_xyz[2])
-    goal_row, goal_col = world_to_grid(grid, target_xyz[0], target_xyz[2])
+    goal_row, goal_col = world_to_grid(grid, goal_xyz[0], goal_xyz[2])
     start_cell = nearest_walkable(grid, start_row, start_col)
     goal_cell = nearest_walkable(grid, goal_row, goal_col)
 
@@ -300,8 +579,8 @@ def plan_route(room, start_world_transform16, target_world_transform16=None, tar
     gx, gz = grid_to_world(grid, goal_cell[0], goal_cell[1])
     return {
         "reachable": True,
-        "reason": "ok",
-        "targetLabel": target_label,
+        "reason": _goal_reason(target_context, support_context),
+        "targetLabel": target_context.label or target_label,
         "snappedGoalWorldTransform16": xyz_to_tf(gx, y, gz),
         "waypoints": waypoints,
     }

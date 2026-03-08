@@ -21,6 +21,15 @@ _model = None
 _processor = None
 
 
+def _detector_provider() -> str:
+    provider = os.getenv("OPEN_VOCAB_DETECTOR_PROVIDER", "grounding_dino").strip().lower()
+    return provider or "grounding_dino"
+
+
+def _allow_provider_fallback() -> bool:
+    return os.getenv("OPEN_VOCAB_ALLOW_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _load_model():
     global _model, _processor
     if _model is None:
@@ -29,9 +38,14 @@ def _load_model():
 
         model_id = os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny")
         _processor = AutoProcessor.from_pretrained(model_id, use_fast=False)
-        _model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        _model = AutoModelForZeroShotObjectDetection.from_pretrained(
+            model_id,
+            low_cpu_mem_usage=False,
+            torch_dtype=torch.float32,
+        )
         _model = _model.to(device)
+        _model.eval()
         logger.info("Grounding DINO loaded on %s using %s", device, model_id)
     return _model, _processor
 
@@ -44,6 +58,31 @@ def detect(
     max_prompt_variants: int | None = None,
     max_tiles_per_frame: int | None = None,
 ) -> list[Detection]:
+    if _detector_provider() == "gemini":
+        try:
+            from open_vocab.gemini.run_gemini import detect as gemini_detect
+
+            return [
+                Detection(
+                    image_path=item.image_path,
+                    bbox_xyxy_norm=item.bbox_xyxy_norm,
+                    confidence=item.confidence,
+                    label=item.label,
+                )
+                for item in gemini_detect(
+                    image_paths=image_paths,
+                    text_prompt=text_prompt,
+                    box_threshold=box_threshold,
+                    text_threshold=text_threshold,
+                    max_prompt_variants=max_prompt_variants,
+                    max_tiles_per_frame=max_tiles_per_frame,
+                )
+            ]
+        except Exception as exc:
+            if not _allow_provider_fallback():
+                raise
+            logger.warning("Gemini detection failed; falling back to Grounding DINO: %s", exc)
+
     from PIL import Image
 
     model, processor = _load_model()
@@ -109,6 +148,87 @@ def detect(
     return deduped
 
 
+def detect_regions(
+    image_path: Path,
+    regions_xyxy_norm: list[list[float]],
+    text_prompt: str,
+    box_threshold: float = 0.25,
+    text_threshold: float = 0.25,
+    max_prompt_variants: int | None = None,
+) -> list[Detection]:
+    if _detector_provider() == "gemini":
+        try:
+            from open_vocab.gemini.run_gemini import detect_regions as gemini_detect_regions
+
+            return [
+                Detection(
+                    image_path=item.image_path,
+                    bbox_xyxy_norm=item.bbox_xyxy_norm,
+                    confidence=item.confidence,
+                    label=item.label,
+                )
+                for item in gemini_detect_regions(
+                    image_path=image_path,
+                    regions_xyxy_norm=regions_xyxy_norm,
+                    text_prompt=text_prompt,
+                    box_threshold=box_threshold,
+                    text_threshold=text_threshold,
+                    max_prompt_variants=max_prompt_variants,
+                )
+            ]
+        except Exception as exc:
+            if not _allow_provider_fallback():
+                raise
+            logger.warning("Gemini region detection failed; falling back to Grounding DINO: %s", exc)
+
+    from PIL import Image
+
+    model, processor = _load_model()
+    device = next(model.parameters()).device
+    profile = _prompt_profile(text_prompt)
+
+    try:
+        image = Image.open(image_path).convert("RGB")
+    except Exception:
+        logger.warning("Failed to open image %s, skipping region detection", image_path)
+        return []
+
+    width, height = image.size
+    prompt_variants = list(profile["prompt_variants"])
+    if max_prompt_variants is not None:
+        prompt_variants = prompt_variants[:max_prompt_variants]
+
+    detections: list[Detection] = []
+    for prompt_variant in prompt_variants:
+        for region in regions_xyxy_norm:
+            crop_bounds = _normalized_region_bounds(region, width, height)
+            if crop_bounds is None:
+                continue
+            crop = image.crop(crop_bounds)
+            crop_detections = _run_detection_pass(
+                image=crop,
+                image_path=image_path,
+                prompt_variant=prompt_variant,
+                model=model,
+                processor=processor,
+                device=device,
+                box_threshold=box_threshold,
+                text_threshold=text_threshold,
+            )
+            detections.extend(
+                _map_tile_detections_to_full_image(
+                    crop_detections,
+                    crop_bounds,
+                    width,
+                    height,
+                )
+            )
+
+    deduped = deduplicate_detections(detections)
+    deduped.sort(key=lambda detection: detection.confidence, reverse=True)
+    return deduped
+
+
 def deduplicate_detections(detections: list[Detection], iou_threshold: float = 0.45) -> list[Detection]:
     grouped: dict[str, list[Detection]] = {}
     for detection in detections:
@@ -140,14 +260,24 @@ def _run_detection_pass(
 ) -> list[Detection]:
     import torch
 
-    inputs = processor(images=image, text=prompt_variant, return_tensors="pt").to(device)
+    inputs = processor(images=image, text=prompt_variant, return_tensors="pt")
+    inputs = {
+        key: value.to(device) if torch.is_tensor(value) else value
+        for key, value in inputs.items()
+    }
     with torch.no_grad():
         outputs = model(**inputs)
+
+    outputs = type(outputs)(**{
+        key: value.detach().cpu() if torch.is_tensor(value) else value
+        for key, value in outputs.items()
+    })
+    input_ids = inputs["input_ids"].detach().cpu()
 
     try:
         results = processor.post_process_grounded_object_detection(
             outputs,
-            inputs["input_ids"],
+            input_ids,
             box_threshold=box_threshold,
             text_threshold=text_threshold,
             target_sizes=[image.size[::-1]],
@@ -155,7 +285,7 @@ def _run_detection_pass(
     except TypeError:
         results = processor.post_process_grounded_object_detection(
             outputs,
-            inputs["input_ids"],
+            input_ids,
             threshold=box_threshold,
             text_threshold=text_threshold,
             target_sizes=[image.size[::-1]],
@@ -245,6 +375,23 @@ def _tile_starts(length: int, tile_size: int, step: int) -> list[int]:
     if starts[-1] != final_start:
         starts.append(final_start)
     return starts
+
+
+def _normalized_region_bounds(
+    region_xyxy_norm: list[float],
+    image_width: int,
+    image_height: int,
+) -> tuple[int, int, int, int] | None:
+    if len(region_xyxy_norm) != 4:
+        return None
+    x1, y1, x2, y2 = region_xyxy_norm
+    left = max(int(round(x1 * image_width)), 0)
+    top = max(int(round(y1 * image_height)), 0)
+    right = min(int(round(x2 * image_width)), image_width)
+    bottom = min(int(round(y2 * image_height)), image_height)
+    if right <= left or bottom <= top:
+        return None
+    return (left, top, right, bottom)
 
 
 def _should_tile(width: int, height: int, profile: dict[str, object]) -> bool:

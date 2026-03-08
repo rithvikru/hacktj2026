@@ -166,6 +166,13 @@ struct RoomTwinView: View {
                 modelContext: modelContext,
                 backendClient: backendClient
             )
+            viewModel.startAssetPolling(
+                modelContext: modelContext,
+                backendClient: backendClient
+            )
+        }
+        .onDisappear {
+            viewModel.stopAssetPolling()
         }
         .onChange(of: viewModel.viewerMode) { _, mode in
             if mode == .dense, viewModel.denseAssetURL == nil {

@@ -28,6 +28,8 @@ struct SceneViewRepresentable: UIViewRepresentable {
     private static let denseGroupName = "densePoints"
     private static let semanticGroupName = "semanticObjectGroup"
     private static let maxDensePointCount = 8_000
+    private static let semanticMarkerExtent = SIMD3<Float>(repeating: 0.14)
+    private static let semanticMarkerHeight: Float = 0.06
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -35,7 +37,7 @@ struct SceneViewRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> SCNView {
         let scnView = SCNView(frame: .zero)
-        scnView.backgroundColor = .black
+        scnView.backgroundColor = UIColor(Color.spaceBlack)
         scnView.allowsCameraControl = true
         scnView.autoenablesDefaultLighting = true
         scnView.antialiasingMode = .multisampling4X
@@ -152,10 +154,11 @@ struct SceneViewRepresentable: UIViewRepresentable {
     private func applyGhostMaterialRecursively(to node: SCNNode) {
         if let geometry = node.geometry {
             let ghostMaterial = SCNMaterial()
-            ghostMaterial.diffuse.contents = UIColor(white: 0.45, alpha: 0.12)
-            ghostMaterial.lightingModel = .constant
+            ghostMaterial.diffuse.contents = UIColor(white: 0.82, alpha: 0.46)
+            ghostMaterial.emission.contents = UIColor(white: 0.58, alpha: 0.18)
+            ghostMaterial.lightingModel = .lambert
             ghostMaterial.isDoubleSided = true
-            ghostMaterial.transparency = 0.12
+            ghostMaterial.transparency = 0.46
             ghostMaterial.writesToDepthBuffer = true
             ghostMaterial.readsFromDepthBuffer = true
             geometry.materials = [ghostMaterial]
@@ -177,36 +180,13 @@ struct SceneViewRepresentable: UIViewRepresentable {
         group.name = Self.semanticGroupName
 
         for obj in semanticObjects {
+            guard isRenderableSemanticObject(obj) else { continue }
             // Hide low-confidence objects unless they're selected
-            if obj.confidence < 0.3 && obj.id != selectedSemanticObjectID {
+            if obj.confidence < 0.22 && obj.id != selectedSemanticObjectID {
                 continue
             }
 
-            let objectNode: SCNNode
-
-            if let localURL = semanticMeshLocalURLs[obj.id],
-               let meshScene = try? SCNScene(url: localURL, options: [.checkConsistency: false]) {
-                // Load .obj mesh
-                objectNode = SCNNode()
-                objectNode.name = "semantic_\(obj.id)"
-                for child in meshScene.rootNode.childNodes {
-                    let clone = child.clone()
-                    objectNode.addChildNode(clone)
-                }
-                // Apply category-tinted material
-                let tintMaterial = categoryTintedMaterial(for: obj)
-                applyMaterialRecursively(tintMaterial, to: objectNode)
-            } else {
-                // Fallback: oriented box using extent_xyz
-                objectNode = makeFallbackBox(for: obj)
-            }
-
-            // Place using world_transform16
-            if let transform16 = obj.worldTransform16, let matrix = simd_float4x4.fromArray(transform16) {
-                objectNode.simdTransform = matrix
-            } else if let center = obj.centerXYZ, center.count == 3 {
-                objectNode.position = SCNVector3(center[0], center[1], center[2])
-            }
+            let objectNode = makeSemanticBoundingNode(for: obj, in: rootNode)
 
             // Selection highlight
             if obj.id == selectedSemanticObjectID {
@@ -219,20 +199,266 @@ struct SceneViewRepresentable: UIViewRepresentable {
         rootNode.addChildNode(group)
     }
 
-    private func makeFallbackBox(for obj: SemanticSceneObject) -> SCNNode {
-        let extent = obj.extentXYZ ?? [0.15, 0.15, 0.15]
-        let width = CGFloat(extent.count > 0 ? extent[0] : 0.15)
-        let height = CGFloat(extent.count > 1 ? extent[1] : 0.15)
-        let length = CGFloat(extent.count > 2 ? extent[2] : 0.15)
+    private func makeSemanticBoundingNode(for obj: SemanticSceneObject, in rootNode: SCNNode) -> SCNNode {
+        let extent = semanticDisplayExtent(for: obj)
+        let box = SCNBox(
+            width: CGFloat(extent.x),
+            height: CGFloat(extent.y),
+            length: CGFloat(extent.z),
+            chamferRadius: CGFloat(min(extent.x, extent.z) * 0.06)
+        )
+        let fillMaterial = categoryTintedMaterial(for: obj)
+        fillMaterial.transparency = 0.72
+        box.materials = [fillMaterial]
 
-        let box = SCNBox(width: width, height: height, length: length, chamferRadius: 0.005)
-        let material = categoryTintedMaterial(for: obj)
-        material.transparency = 0.4
-        box.materials = [material]
-
-        let node = SCNNode(geometry: box)
+        let node = SCNNode()
         node.name = "semantic_\(obj.id)"
+        node.geometry = box
+
+        let outline = SCNBox(
+            width: CGFloat(extent.x * 1.015),
+            height: CGFloat(extent.y * 1.015),
+            length: CGFloat(extent.z * 1.015),
+            chamferRadius: CGFloat(min(extent.x, extent.z) * 0.06)
+        )
+        let outlineMaterial = SCNMaterial()
+        outlineMaterial.diffuse.contents = UIColor.white.withAlphaComponent(0.9)
+        outlineMaterial.emission.contents = UIColor.white.withAlphaComponent(0.5)
+        outlineMaterial.fillMode = .lines
+        outlineMaterial.isDoubleSided = true
+        outline.firstMaterial = outlineMaterial
+        let outlineNode = SCNNode(geometry: outline)
+        node.addChildNode(outlineNode)
+
+        applySemanticPlacement(to: node, obj: obj, extent: extent, in: rootNode)
+        if let labelNode = makeSemanticLabelNode(for: obj, extent: extent) {
+            node.addChildNode(labelNode)
+        }
         return node
+    }
+
+    private func semanticDisplayExtent(for obj: SemanticSceneObject) -> SIMD3<Float> {
+        SIMD3<Float>(
+            Self.semanticMarkerExtent.x,
+            Self.semanticMarkerHeight,
+            Self.semanticMarkerExtent.z
+        )
+    }
+
+    private func applySemanticPlacement(
+        to node: SCNNode,
+        obj: SemanticSceneObject,
+        extent: SIMD3<Float>,
+        in rootNode: SCNNode
+    ) {
+        let center = obj.centerXYZ ?? obj.baseAnchorXYZ ?? obj.supportAnchorXYZ ?? [0, 0, 0]
+        let x = center.count > 0 ? center[0] : 0
+        let z = center.count > 2 ? center[2] : 0
+
+        let backendBaseY: Float
+        if let baseAnchor = obj.baseAnchorXYZ, baseAnchor.count > 1 {
+            backendBaseY = baseAnchor[1]
+        } else if let supportAnchor = obj.supportAnchorXYZ, supportAnchor.count > 1 {
+            backendBaseY = supportAnchor[1]
+        } else {
+            let cy = center.count > 1 ? center[1] : 0
+            backendBaseY = cy - (extent.y * 0.5)
+        }
+
+        let snappedBaseY = snappedSemanticBaseY(
+            near: SIMD2<Float>(x, z),
+            preferredY: backendBaseY,
+            in: rootNode
+        ) ?? backendBaseY
+
+        node.position = SCNVector3(x, snappedBaseY + (extent.y * 0.5), z)
+
+        if let yaw = obj.yawRadians {
+            node.eulerAngles = SCNVector3(0, yaw, 0)
+        } else if let transform16 = obj.worldTransform16, let matrix = simd_float4x4.fromArray(transform16) {
+            let yaw = atan2f(matrix.columns.0.z, matrix.columns.0.x)
+            node.eulerAngles = SCNVector3(0, yaw, 0)
+        }
+    }
+
+    private func snappedSemanticBaseY(
+        near positionXZ: SIMD2<Float>,
+        preferredY: Float,
+        in rootNode: SCNNode
+    ) -> Float? {
+        guard let scaffoldGroup = rootNode.childNode(withName: Self.scaffoldGroupName, recursively: false) else {
+            return nil
+        }
+
+        let supportNodes = scaffoldSupportCandidates(in: scaffoldGroup)
+        guard !supportNodes.isEmpty else { return nil }
+
+        var bestContainingTop: Float?
+        var nearestTop: Float?
+        var nearestDistance = Float.greatestFiniteMagnitude
+
+        for candidate in supportNodes {
+            let min = candidate.min
+            let max = candidate.max
+            let topY = max.y
+
+            // Ignore ceilings / very high geometry relative to the semantic estimate.
+            if topY > preferredY + 0.75 {
+                continue
+            }
+
+            let contains =
+                positionXZ.x >= min.x - 0.03 &&
+                positionXZ.x <= max.x + 0.03 &&
+                positionXZ.y >= min.z - 0.03 &&
+                positionXZ.y <= max.z + 0.03
+
+            if contains {
+                if let current = bestContainingTop {
+                    if topY > current {
+                        bestContainingTop = topY
+                    }
+                } else {
+                    bestContainingTop = topY
+                }
+                continue
+            }
+
+            let dx: Float
+            if positionXZ.x < min.x {
+                dx = min.x - positionXZ.x
+            } else if positionXZ.x > max.x {
+                dx = positionXZ.x - max.x
+            } else {
+                dx = 0
+            }
+
+            let dz: Float
+            if positionXZ.y < min.z {
+                dz = min.z - positionXZ.y
+            } else if positionXZ.y > max.z {
+                dz = positionXZ.y - max.z
+            } else {
+                dz = 0
+            }
+
+            let distance = hypotf(dx, dz)
+            if distance < nearestDistance && distance < 0.28 {
+                nearestDistance = distance
+                nearestTop = topY
+            }
+        }
+
+        return bestContainingTop ?? nearestTop
+    }
+
+    private func scaffoldSupportCandidates(in rootNode: SCNNode) -> [(min: SIMD3<Float>, max: SIMD3<Float>)] {
+        var candidates: [(min: SIMD3<Float>, max: SIMD3<Float>)] = []
+
+        func visit(_ node: SCNNode) {
+            if node.geometry != nil, let bounds = worldBounds(for: node) {
+                let size = bounds.max - bounds.min
+                // Prefer horizontal support-like surfaces, not tall walls.
+                if size.y < 1.35 && size.x > 0.12 && size.z > 0.12 {
+                    candidates.append(bounds)
+                }
+            }
+            for child in node.childNodes {
+                visit(child)
+            }
+        }
+
+        visit(rootNode)
+        return candidates
+    }
+
+    private func worldBounds(for node: SCNNode) -> (min: SIMD3<Float>, max: SIMD3<Float>)? {
+        let (minBox, maxBox) = node.boundingBox
+        let localCorners = [
+            SCNVector3(minBox.x, minBox.y, minBox.z),
+            SCNVector3(minBox.x, minBox.y, maxBox.z),
+            SCNVector3(minBox.x, maxBox.y, minBox.z),
+            SCNVector3(minBox.x, maxBox.y, maxBox.z),
+            SCNVector3(maxBox.x, minBox.y, minBox.z),
+            SCNVector3(maxBox.x, minBox.y, maxBox.z),
+            SCNVector3(maxBox.x, maxBox.y, minBox.z),
+            SCNVector3(maxBox.x, maxBox.y, maxBox.z),
+        ]
+
+        var minWorld = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
+        var maxWorld = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+
+        for corner in localCorners {
+            let world = node.convertPosition(corner, to: nil)
+            let point = SIMD3<Float>(world.x, world.y, world.z)
+            minWorld = simd_min(minWorld, point)
+            maxWorld = simd_max(maxWorld, point)
+        }
+
+        guard minWorld.x.isFinite, minWorld.y.isFinite, minWorld.z.isFinite,
+              maxWorld.x.isFinite, maxWorld.y.isFinite, maxWorld.z.isFinite else {
+            return nil
+        }
+
+        return (minWorld, maxWorld)
+    }
+
+    private func makeSemanticLabelNode(for obj: SemanticSceneObject, extent: SIMD3<Float>) -> SCNNode? {
+        let text = SCNText(string: obj.label.capitalized, extrusionDepth: 0.2)
+        text.font = UIFont.systemFont(ofSize: 8, weight: .semibold)
+        text.flatness = 0.2
+        text.alignmentMode = CATextLayerAlignmentMode.center.rawValue
+
+        let material = SCNMaterial()
+        material.diffuse.contents = UIColor.white
+        material.emission.contents = UIColor.white.withAlphaComponent(0.85)
+        material.lightingModel = .constant
+        material.isDoubleSided = true
+        text.materials = [material]
+
+        let labelNode = SCNNode(geometry: text)
+        let (minVec, maxVec) = labelNode.boundingBox
+        let width = maxVec.x - minVec.x
+        let height = maxVec.y - minVec.y
+        let targetWidth: Float = 0.18
+        let scale = width > 0 ? targetWidth / width : 0.01
+        labelNode.scale = SCNVector3(scale, scale, scale)
+        labelNode.position = SCNVector3(
+            0,
+            extent.y * 0.75 + (height * scale * 0.5) + 0.04,
+            0
+        )
+        labelNode.constraints = [SCNBillboardConstraint()]
+        labelNode.renderingOrder = 10
+        return labelNode
+    }
+
+    private func isRenderableSemanticObject(_ obj: SemanticSceneObject) -> Bool {
+        let label = obj.label.lowercased()
+        let smallObjectLabels = [
+            "laptop",
+            "keyboard",
+            "mouse",
+            "phone",
+            "airpods case",
+            "wallet",
+            "keys",
+            "glasses",
+            "charger",
+            "tv remote",
+            "backpack",
+            "book",
+            "notebook",
+            "bottle",
+            "can",
+            "mug",
+            "bowl",
+            "plate",
+        ]
+        guard smallObjectLabels.contains(label) else { return false }
+        let supportType = obj.supportRelation?.type?.lowercased()
+        let supportLabel = obj.supportRelation?.supportLabel?.lowercased()
+        return supportType == "supported_by" && supportLabel != "floor"
     }
 
     private func categoryTintedMaterial(for obj: SemanticSceneObject) -> SCNMaterial {
@@ -356,6 +582,11 @@ struct SceneViewRepresentable: UIViewRepresentable {
         defer { rootNode.addChildNode(group) }
 
         guard showDense, let denseAssetURL else { return }
+        if let meshNode = loadDenseMeshNode(from: denseAssetURL) {
+            meshNode.name = "densePreviewMesh"
+            group.addChildNode(meshNode)
+            return
+        }
         guard let samples = try? loadDenseSamples(from: denseAssetURL), !samples.isEmpty else { return }
 
         let stride = max(1, Int(ceil(Double(samples.count) / Double(Self.maxDensePointCount))))
@@ -440,6 +671,34 @@ struct SceneViewRepresentable: UIViewRepresentable {
         material.writesToDepthBuffer = true
         geometry.materials = [material]
         return geometry
+    }
+
+    private func loadDenseMeshNode(from url: URL) -> SCNNode? {
+        let supportedMeshExtensions = Set(["obj", "usdz", "dae", "scn", "scnz"])
+        guard supportedMeshExtensions.contains(url.pathExtension.lowercased()) else { return nil }
+        guard let scene = try? SCNScene(url: url, options: [.checkConsistency: false]) else { return nil }
+
+        let container = SCNNode()
+        for child in scene.rootNode.childNodes {
+            let clone = child.clone()
+            applyDensePreviewMaterialIfNeeded(to: clone)
+            container.addChildNode(clone)
+        }
+        return container
+    }
+
+    private func applyDensePreviewMaterialIfNeeded(to node: SCNNode) {
+        if let geometry = node.geometry, geometry.materials.isEmpty {
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor(white: 0.82, alpha: 1.0)
+            material.lightingModel = .physicallyBased
+            material.roughness.contents = 0.9
+            material.metalness.contents = 0.0
+            geometry.materials = [material]
+        }
+        for child in node.childNodes {
+            applyDensePreviewMaterialIfNeeded(to: child)
+        }
     }
 
     private func loadDenseSamples(from url: URL) throws -> [DensePointSample] {

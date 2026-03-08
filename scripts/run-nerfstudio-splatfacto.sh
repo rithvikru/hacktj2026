@@ -74,7 +74,6 @@ ns-train "$MODEL_VARIANT" \
   --max-num-iterations "$TRAIN_STEPS" \
   --output-dir "$TRAIN_DIR" \
   --pipeline.model.cull_alpha_thresh=0.005 \
-  --pipeline.model.continue_cull_post_densification=False \
   --data "$DATASET_DIR"
 
 LATEST_CONFIG="$(find "$TRAIN_DIR" -name config.yml | sort | tail -n 1)"

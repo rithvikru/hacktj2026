@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,8 @@ def train_dense_scene(
     diagnostics: dict[str, object] = {
         "room_id": room_id,
         "frame_count": dataset_export.frame_count,
+        "dataset_manifest_path": str(dataset_export.manifest_path),
+        "transforms_json_path": str(dataset_export.transforms_json_path),
         "training_backend": "fallback_pointcloud",
         "photoreal_ready": False,
         "asset_kind": "pointcloud_fallback",
@@ -54,16 +57,22 @@ def train_dense_scene(
     photoreal_ready = False
     asset_kind = "pointcloud_fallback"
     renderer = "pointcloud"
+    started_at = time.perf_counter()
 
     external_command = os.getenv("HACKTJ2026_DENSE_TRAIN_COMMAND")
     if external_command:
         diagnostics["external_command"] = external_command
         try:
+            external_started_at = time.perf_counter()
             asset_path = _run_external_dense_training(
                 command_template=external_command,
                 dataset_export=dataset_export,
                 pointcloud_path=pointcloud_path,
                 reconstruction_dir=reconstruction_dir,
+            )
+            diagnostics["external_duration_seconds"] = round(
+                time.perf_counter() - external_started_at,
+                3,
             )
             if asset_path is not None:
                 training_backend = "external_command"
@@ -90,6 +99,7 @@ def train_dense_scene(
             "asset_kind": asset_kind,
             "renderer": renderer,
             "asset_path": str(asset_path) if asset_path else None,
+            "total_duration_seconds": round(time.perf_counter() - started_at, 3),
         }
     )
 
@@ -117,10 +127,16 @@ def _run_external_dense_training(
     pointcloud_path: Path,
     reconstruction_dir: Path,
 ) -> Path | None:
+    dataset_dir = dataset_export.dataset_dir.resolve()
+    images_dir = dataset_export.images_dir.resolve()
+    transforms_json_path = dataset_export.transforms_json_path.resolve()
+    pointcloud_path = pointcloud_path.resolve()
+    reconstruction_dir = reconstruction_dir.resolve()
+
     command = command_template.format(
-        dataset_dir=str(dataset_export.dataset_dir),
-        image_dir=str(dataset_export.images_dir),
-        transforms_json=str(dataset_export.transforms_json_path),
+        dataset_dir=str(dataset_dir),
+        image_dir=str(images_dir),
+        transforms_json=str(transforms_json_path),
         pointcloud_path=str(pointcloud_path),
         output_dir=str(reconstruction_dir),
     )

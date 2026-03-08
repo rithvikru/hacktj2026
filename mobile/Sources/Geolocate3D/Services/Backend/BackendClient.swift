@@ -10,6 +10,8 @@ final class BackendClient {
 
     var baseURL: URL
     var isConnected: Bool = false
+    var lastConnectionStatusCode: Int?
+    var lastConnectionErrorDescription: String?
 
     private let session: URLSession
     private let decoder = JSONDecoder()
@@ -32,11 +34,17 @@ final class BackendClient {
         }
         baseURL = url
         UserDefaults.standard.set(url.absoluteString, forKey: Self.storedBaseURLKey)
+        isConnected = false
+        lastConnectionStatusCode = nil
+        lastConnectionErrorDescription = nil
     }
 
     func resetBaseURL() {
         baseURL = Self.defaultBaseURL
         UserDefaults.standard.set(Self.defaultBaseURL.absoluteString, forKey: Self.storedBaseURLKey)
+        isConnected = false
+        lastConnectionStatusCode = nil
+        lastConnectionErrorDescription = nil
     }
     func createRoom(id preferredRoomID: UUID? = nil, name: String, metadata: [String: String] = [:]) async throws -> UUID {
         let url = baseURL.appendingPathComponent("rooms")
@@ -191,10 +199,21 @@ final class BackendClient {
     func checkConnection() async {
         do {
             let url = baseURL.appendingPathComponent("healthz")
-            let (_, response) = try await session.data(from: url)
-            isConnected = (response as? HTTPURLResponse)?.statusCode == 200
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (_, response) = try await session.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode
+            lastConnectionStatusCode = statusCode
+            isConnected = statusCode == 200
+            lastConnectionErrorDescription = isConnected
+                ? nil
+                : "Health check returned HTTP \(statusCode ?? -1)."
         } catch {
             isConnected = false
+            lastConnectionStatusCode = nil
+            let nsError = error as NSError
+            lastConnectionErrorDescription =
+                "Health check failed for \(baseURL.absoluteString): \(nsError.domain) \(nsError.code) \(error.localizedDescription)"
         }
     }
 
@@ -883,11 +902,22 @@ private struct OpenVocabCandidate: Decodable {
 // MARK: - Semantic Scene DTOs
 
 struct SupportRelationDTO: Decodable, Sendable {
+    let type: String?
+    let supportObjectID: String?
+    let supportLabel: String?
+    let supportHeightY: Float?
     let parentID: String?
     let parentLabel: String?
     let relationType: String?
 
     private enum CodingKeys: String, CodingKey {
+        case type
+        case supportObjectID
+        case support_object_id
+        case supportLabel
+        case support_label
+        case supportHeightY
+        case support_height_y
         case parentID
         case parent_id
         case parentLabel
@@ -898,6 +928,16 @@ struct SupportRelationDTO: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        supportObjectID =
+            try container.decodeIfPresent(String.self, forKey: .supportObjectID) ??
+            (try container.decodeIfPresent(String.self, forKey: .support_object_id))
+        supportLabel =
+            try container.decodeIfPresent(String.self, forKey: .supportLabel) ??
+            (try container.decodeIfPresent(String.self, forKey: .support_label))
+        supportHeightY =
+            try container.decodeIfPresent(Float.self, forKey: .supportHeightY) ??
+            (try container.decodeIfPresent(Float.self, forKey: .support_height_y))
         parentID =
             try container.decodeIfPresent(String.self, forKey: .parentID) ??
             (try container.decodeIfPresent(String.self, forKey: .parent_id))
@@ -910,6 +950,9 @@ struct SupportRelationDTO: Decodable, Sendable {
     }
 
     var displayDescription: String {
+        if let type, let supportLabel {
+            return "\(type) \(supportLabel)"
+        }
         guard let parentLabel, let relationType else { return "" }
         return "\(relationType) \(parentLabel)"
     }
@@ -932,8 +975,8 @@ struct SemanticSceneObject: Decodable, Identifiable, Sendable {
     let meshAssetURL: String?
     let pointCount: Int?
     let supportingViewCount: Int?
-    let maskSupportedViews: [String]?
-    let bboxFallbackViews: [String]?
+    let maskSupportedViewCount: Int?
+    let bboxFallbackViewCount: Int?
     let supportRelation: SupportRelationDTO?
 
     private enum CodingKeys: String, CodingKey {
@@ -1018,12 +1061,16 @@ struct SemanticSceneObject: Decodable, Identifiable, Sendable {
         supportingViewCount =
             try container.decodeIfPresent(Int.self, forKey: .supportingViewCount) ??
             (try container.decodeIfPresent(Int.self, forKey: .supporting_view_count))
-        maskSupportedViews =
-            try container.decodeIfPresent([String].self, forKey: .maskSupportedViews) ??
-            (try container.decodeIfPresent([String].self, forKey: .mask_supported_views))
-        bboxFallbackViews =
-            try container.decodeIfPresent([String].self, forKey: .bboxFallbackViews) ??
-            (try container.decodeIfPresent([String].self, forKey: .bbox_fallback_views))
+        maskSupportedViewCount =
+            try container.decodeIfPresent(Int.self, forKey: .maskSupportedViews) ??
+            (try container.decodeIfPresent(Int.self, forKey: .mask_supported_views)) ??
+            (try container.decodeIfPresent([String].self, forKey: .maskSupportedViews))?.count ??
+            (try container.decodeIfPresent([String].self, forKey: .mask_supported_views))?.count
+        bboxFallbackViewCount =
+            try container.decodeIfPresent(Int.self, forKey: .bboxFallbackViews) ??
+            (try container.decodeIfPresent(Int.self, forKey: .bbox_fallback_views)) ??
+            (try container.decodeIfPresent([String].self, forKey: .bboxFallbackViews))?.count ??
+            (try container.decodeIfPresent([String].self, forKey: .bbox_fallback_views))?.count
         supportRelation =
             try container.decodeIfPresent(SupportRelationDTO.self, forKey: .supportRelation) ??
             (try container.decodeIfPresent(SupportRelationDTO.self, forKey: .support_relation))
@@ -1033,7 +1080,8 @@ struct SemanticSceneObject: Decodable, Identifiable, Sendable {
 struct SemanticSceneResponse: Decodable, Sendable {
     let objects: [SemanticSceneObject]
     let roomID: String?
-    let sceneVersion: String?
+    let sceneVersion: Int?
+    let generatedAt: String?
 
     private enum CodingKeys: String, CodingKey {
         case objects
@@ -1043,6 +1091,8 @@ struct SemanticSceneResponse: Decodable, Sendable {
         case room_id
         case sceneVersion
         case scene_version
+        case generatedAt
+        case generated_at
     }
 
     init(from decoder: Decoder) throws {
@@ -1056,8 +1106,11 @@ struct SemanticSceneResponse: Decodable, Sendable {
             try container.decodeIfPresent(String.self, forKey: .roomID) ??
             (try container.decodeIfPresent(String.self, forKey: .room_id))
         sceneVersion =
-            try container.decodeIfPresent(String.self, forKey: .sceneVersion) ??
-            (try container.decodeIfPresent(String.self, forKey: .scene_version))
+            try container.decodeIfPresent(Int.self, forKey: .sceneVersion) ??
+            (try container.decodeIfPresent(Int.self, forKey: .scene_version))
+        generatedAt =
+            try container.decodeIfPresent(String.self, forKey: .generatedAt) ??
+            (try container.decodeIfPresent(String.self, forKey: .generated_at))
     }
 }
 

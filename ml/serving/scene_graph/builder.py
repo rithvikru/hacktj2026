@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 from uuid import uuid4
 
@@ -51,6 +52,16 @@ def build_scene_graph(room: RoomState) -> dict:
         node_id = obs.get("id", str(uuid4()))
         label = obs.get("label", "unknown")
         transform = obs.get("worldTransform16") or obs.get("world_transform16")
+        attributes = {
+            "source": obs.get("source"),
+            "confidence": obs.get("confidence"),
+            "meshAssetURL": obs.get("meshAssetURL") or obs.get("mesh_asset_url"),
+            "semanticSceneRef": obs.get("semanticSceneRef") or obs.get("semantic_scene_ref"),
+            "centerXyz": obs.get("centerXyz") or obs.get("center_xyz"),
+            "baseAnchorXyz": obs.get("baseAnchorXyz") or obs.get("base_anchor_xyz"),
+            "footprintXyz": obs.get("footprintXyz") or obs.get("footprint_xyz"),
+            "supportRelation": obs.get("supportRelation") or obs.get("support_relation"),
+        }
         node = {
             "id": node_id,
             "nodeType": _classify_node_type(label),
@@ -58,7 +69,7 @@ def build_scene_graph(room: RoomState) -> dict:
             "worldTransform16": transform,
             "extentXyz": obs.get("extentXyz") or obs.get("extent_xyz"),
             "parentId": room_node_id,
-            "attributesJson": "{}",
+            "attributesJson": json.dumps({k: v for k, v in attributes.items() if v is not None}),
         }
         nodes.append(node)
         pos = _extract_position(transform)
@@ -70,6 +81,16 @@ def build_scene_graph(room: RoomState) -> dict:
             node_id = obs.get("id", str(uuid4()))
             label = obs.get("label", "unknown")
             transform = obs.get("worldTransform16") or obs.get("world_transform16")
+            attributes = {
+                "source": obs.get("source"),
+                "confidence": obs.get("confidence"),
+                "meshAssetURL": obs.get("meshAssetURL") or obs.get("mesh_asset_url"),
+                "semanticSceneRef": obs.get("semanticSceneRef") or obs.get("semantic_scene_ref"),
+                "centerXyz": obs.get("centerXyz") or obs.get("center_xyz"),
+                "baseAnchorXyz": obs.get("baseAnchorXyz") or obs.get("base_anchor_xyz"),
+                "footprintXyz": obs.get("footprintXyz") or obs.get("footprint_xyz"),
+                "supportRelation": obs.get("supportRelation") or obs.get("support_relation"),
+            }
             node = {
                 "id": node_id,
                 "nodeType": _classify_node_type(label),
@@ -77,7 +98,7 @@ def build_scene_graph(room: RoomState) -> dict:
                 "worldTransform16": transform,
                 "extentXyz": obs.get("extentXyz") or obs.get("extent_xyz"),
                 "parentId": room_node_id,
-                "attributesJson": "{}",
+                "attributesJson": json.dumps({k: v for k, v in attributes.items() if v is not None}),
             }
             nodes.append(node)
             pos = _extract_position(transform)

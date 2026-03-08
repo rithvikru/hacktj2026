@@ -3,15 +3,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
 from hacktj2026_ml.chat_service import ChatService
@@ -38,8 +40,14 @@ from serving.storage.frame_bundle import (
     write_manifest,
 )
 from serving.storage.room_store import RoomStore
+from serving.workers.reconstruction_queue import (
+    enqueue_reconstruction,
+    shutdown_reconstruction_queue,
+)
 
 logger = logging.getLogger(__name__)
+MAX_MULTIPART_FILES = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FILES", "5000"))
+MAX_MULTIPART_FIELDS = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FIELDS", "64"))
 SCAN_LIVE_DEFAULT_LABELS = [
     "phone",
     "airpods case",
@@ -176,6 +184,11 @@ engine = QueryEngine(toolkit=DefaultQueryToolkit())
 chat_service = ChatService(query_engine=engine)
 
 
+@app.on_event("shutdown")
+def shutdown_workers() -> None:
+    shutdown_reconstruction_queue()
+
+
 # --- Endpoints ---
 
 
@@ -232,11 +245,7 @@ def create_room(request: RoomCreateRequest):
 @app.post("/rooms/{room_id}/frame-bundles", response_model=FrameBundleAcceptedResponse)
 async def upload_frame_bundle(
     room_id: str,
-    file: UploadFile | None = File(default=None),
-    manifest: UploadFile | None = File(default=None),
-    images: list[UploadFile] | None = File(default=None),
-    depth_files: list[UploadFile] | None = File(default=None),
-    confidence_files: list[UploadFile] | None = File(default=None),
+    request: Request,
 ) -> FrameBundleAcceptedResponse:
     store = RoomStore()
     room = store.get(room_id)
@@ -246,15 +255,42 @@ async def upload_frame_bundle(
     data_dir = Path("data/rooms") / room_id / "frames"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    if manifest is not None:
+    try:
+        form = await request.form(
+            max_files=MAX_MULTIPART_FILES,
+            max_fields=MAX_MULTIPART_FIELDS,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "Too many files" in message:
+            raise HTTPException(
+                400,
+                f"Too many files in frame bundle upload. Maximum number of files is {MAX_MULTIPART_FILES}.",
+            ) from exc
+        raise
+
+    file = form.get("file")
+    manifest = form.get("manifest")
+    images = [value for value in form.getlist("images") if isinstance(value, StarletteUploadFile)]
+    depth_files = [
+        value for value in form.getlist("depth_files") if isinstance(value, StarletteUploadFile)
+    ]
+    confidence_files = [
+        value for value in form.getlist("confidence_files") if isinstance(value, StarletteUploadFile)
+    ]
+
+    if isinstance(manifest, StarletteUploadFile):
         await _save_upload(manifest, data_dir / "manifest.json")
-        for upload in images or []:
+        for upload in images:
             await _save_upload(upload, data_dir / "images" / Path(upload.filename or "image.bin").name)
-        for upload in depth_files or []:
+        for upload in depth_files:
             await _save_upload(upload, data_dir / "depth" / Path(upload.filename or "depth.bin").name)
-        for upload in confidence_files or []:
-            await _save_upload(upload, data_dir / "confidence" / Path(upload.filename or "confidence.bin").name)
-    elif file is not None:
+        for upload in confidence_files:
+            await _save_upload(
+                upload,
+                data_dir / "confidence" / Path(upload.filename or "confidence.bin").name,
+            )
+    elif isinstance(file, StarletteUploadFile):
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or "bundle.zip").suffix or ".zip")
         content = await file.read()
         tmp.write(content)
@@ -309,12 +345,7 @@ async def reconstruct_room_endpoint(room_id: str) -> JobAcceptedResponse:
         raise HTTPException(400, "No frames uploaded")
 
     store.update(room_id, reconstruction_status="queued", reconstruction_assets={})
-
-    from serving.workers.reconstruct_room import reconstruct_room
-
-    asyncio.create_task(
-        reconstruct_room(room_id, room.frame_dir, room.frames, store)
-    )
+    enqueue_reconstruction(room_id)
     return JobAcceptedResponse(room_id=room_id, job_type="reconstruct", status="queued")
 
 
