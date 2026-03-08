@@ -5,17 +5,26 @@ struct HomeView: View {
     @Environment(RoomStore.self) private var roomStore
     @State private var viewModel = HomeViewModel()
 
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                if roomStore.rooms.isEmpty {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage("preferredMode") private var preferredMode = ""
+    @State private var skipScan = false
 
-                    EmptyStateScanCTA(onScan: {
-                        coordinator.presentImmersive(.scanRoom)
-                    })
-                    .padding(.horizontal, 16)
-                    .padding(.top, 24)
-                } else {
+    private var showEmptyState: Bool {
+        roomStore.rooms.isEmpty && !skipScan && preferredMode != "outside"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    if showEmptyState {
+
+                        EmptyStateScanCTA(onScan: {
+                            coordinator.presentImmersive(.scanRoom)
+                        })
+                        .padding(.horizontal, 16)
+                        .padding(.top, 24)
+                    } else {
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Your Spaces")
@@ -71,8 +80,35 @@ struct HomeView: View {
             }
             .padding(.bottom, 40)
         }
-        .background(Color.spaceBlack)
-        .navigationTitle("Uncover")
+            .background(Color.spaceBlack)
+            .navigationTitle("Uncover")
+
+            if showEmptyState {
+                HStack {
+                    Button {
+                        hasCompletedOnboarding = false
+                    } label: {
+                        Text("Back")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    Spacer()
+                    Button {
+                        skipScan = true
+                    } label: {
+                        Text("Skip for now")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+            }
+        }
     }
 
     private var rooms: [RoomRecord] {
@@ -82,7 +118,6 @@ struct HomeView: View {
 
 private struct EmptyStateScanCTA: View {
     let onScan: () -> Void
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
 
     var body: some View {
         VStack(spacing: 24) {
@@ -110,20 +145,6 @@ private struct EmptyStateScanCTA: View {
                     .padding(.vertical, 16)
                     .background(Color.spatialCyan, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-
-            Spacer()
-        }
-        .overlay(alignment: .bottomLeading) {
-            Button {
-                hasCompletedOnboarding = false
-            } label: {
-                Text("Back")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-            }
-            .padding(.bottom, 8)
         }
     }
 }
