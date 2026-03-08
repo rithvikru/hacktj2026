@@ -44,20 +44,6 @@ SAM2 quality mode:
 
 ---
 
-## CRITICAL: Before Production
+## Remaining TODO: Wire Outdoor Capture to Glasses
 
-**The `findit-live` branch contains the Meta Ray-Ban wearables integration code (`WearablesBridge`, `MetaWearablesBridge`, `WearableFrameSampler`, `WearablePersistenceService`, etc.) that is NOT on the `ml` branch.** The outdoor mode currently uses a simulated 1 FPS timer instead of real glasses frame capture.
-
-**You MUST merge `findit-live` into `ml` before shipping.** Without this merge, the outdoor capture pipeline records GPS-stamped placeholder frames instead of actual glasses camera images. The indoor mode's room scanning also depends on this wearables code.
-
-Files that need to come from `findit-live`:
-- `mobile/Sources/Geolocate3D/Services/Wearables/WearablesBridge.swift`
-- `mobile/Sources/Geolocate3D/Services/Wearables/MetaWearablesBridge.swift`
-- `mobile/Sources/Geolocate3D/Services/Wearables/SimulatedWearablesBridge.swift`
-- `mobile/Sources/Geolocate3D/Services/Wearables/WearableStreamSessionManager.swift`
-- `mobile/Sources/Geolocate3D/Services/Wearables/WearableFrameSampler.swift`
-- `mobile/Sources/Geolocate3D/Services/Wearables/WearablePersistenceService.swift`
-- `mobile/Sources/Geolocate3D/Models/Wearables/WearableStreamState.swift`
-- `mobile/Sources/Geolocate3D/Models/Wearables/WearableBridgeMode.swift`
-
-Then wire `OutdoorCaptureCoordinator` to use `WearablesBridge` instead of `Timer`.
+All wearables code is now on `main` (merged from `ui-trial`). The outdoor capture pipeline (`OutdoorMapViewModel`) still uses a simulated 1 FPS `Timer` instead of real `WearablesBridge` frame capture. To fix: replace the `Timer` in `OutdoorMapViewModel.startCapture()` with `WearableStreamSessionManager` frame callbacks + GPS stamping via `LocationService`.
