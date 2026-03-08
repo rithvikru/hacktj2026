@@ -8,10 +8,19 @@ final class ARViewCoordinator: NSObject, ARSessionDelegate {
     weak var arView: ARView?
     private let sessionManager: SpatialSessionManager
     private let viewModel: LiveSearchViewModel
+    private let roomID: UUID?
+    private let backendClient: BackendClient
 
-    init(sessionManager: SpatialSessionManager, viewModel: LiveSearchViewModel) {
+    init(
+        sessionManager: SpatialSessionManager,
+        viewModel: LiveSearchViewModel,
+        roomID: UUID?,
+        backendClient: BackendClient
+    ) {
         self.sessionManager = sessionManager
         self.viewModel = viewModel
+        self.roomID = roomID
+        self.backendClient = backendClient
     }
 
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -21,7 +30,11 @@ final class ARViewCoordinator: NSObject, ARSessionDelegate {
             // Update tracking state on the session manager
             self.sessionManager.trackingState = frame.camera.trackingState
             self.sessionManager.worldMappingStatus = frame.worldMappingStatus
-            self.viewModel.updateCameraTransform(frame.camera.transform)
+            self.viewModel.handleCameraTransformUpdate(
+                frame.camera.transform,
+                roomID: self.roomID,
+                backendClient: self.backendClient
+            )
 
             // Sync 3D entities and project to screen space
             self.viewModel.syncOverlays(in: arView)

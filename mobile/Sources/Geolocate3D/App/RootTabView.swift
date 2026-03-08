@@ -22,8 +22,8 @@ struct RootTabView: View {
             switch route {
             case .scanRoom:
                 ScanRoomView()
-            case .liveSearch(let roomID):
-                LiveSearchView(roomID: roomID)
+            case .liveSearch(let roomID, let target):
+                LiveSearchView(roomID: roomID, initialRouteTarget: target)
             case .companionTarget:
                 CompanionTargetStubView()
             }

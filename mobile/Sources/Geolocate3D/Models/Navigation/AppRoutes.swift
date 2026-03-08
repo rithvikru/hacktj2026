@@ -1,5 +1,18 @@
 import Foundation
 
+struct LiveRouteTarget: Hashable {
+    let objectID: String?
+    let label: String
+    let worldTransform16: [Float]?
+
+    var routeIDComponent: String {
+        if let objectID, !objectID.isEmpty {
+            return objectID
+        }
+        return label.replacingOccurrences(of: " ", with: "-").lowercased()
+    }
+}
+
 // MARK: - Hierarchical Push Destinations (NavigationStack)
 
 enum NavigationRoute: Hashable {
@@ -12,13 +25,14 @@ enum NavigationRoute: Hashable {
 
 enum FullScreenRoute: Identifiable {
     case scanRoom
-    case liveSearch(roomID: UUID?)
+    case liveSearch(roomID: UUID?, target: LiveRouteTarget? = nil)
     case companionTarget
 
     var id: String {
         switch self {
         case .scanRoom: return "scanRoom"
-        case .liveSearch(let id): return "liveSearch-\(id?.uuidString ?? "new")"
+        case .liveSearch(let id, let target):
+            return "liveSearch-\(id?.uuidString ?? "new")-\(target?.routeIDComponent ?? "default")"
         case .companionTarget: return "companionTarget"
         }
     }

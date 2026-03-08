@@ -28,6 +28,7 @@ struct SceneViewRepresentable: UIViewRepresentable {
     private static let denseGroupName = "densePoints"
     private static let semanticGroupName = "semanticObjectGroup"
     private static let maxDensePointCount = 8_000
+    private static let maxRenderableSemanticObjects = 10
     private static let semanticMarkerExtent = SIMD3<Float>(repeating: 0.14)
     private static let semanticMarkerHeight: Float = 0.06
 
@@ -179,13 +180,7 @@ struct SceneViewRepresentable: UIViewRepresentable {
         let group = SCNNode()
         group.name = Self.semanticGroupName
 
-        for obj in semanticObjects {
-            guard isRenderableSemanticObject(obj) else { continue }
-            // Hide low-confidence objects unless they're selected
-            if obj.confidence < 0.22 && obj.id != selectedSemanticObjectID {
-                continue
-            }
-
+        for obj in cappedRenderableSemanticObjects() {
             let objectNode = makeSemanticBoundingNode(for: obj, in: rootNode)
 
             // Selection highlight
@@ -197,6 +192,31 @@ struct SceneViewRepresentable: UIViewRepresentable {
         }
 
         rootNode.addChildNode(group)
+    }
+
+    private func cappedRenderableSemanticObjects() -> [SemanticSceneObject] {
+        let filtered = semanticObjects.filter { obj in
+            guard isRenderableSemanticObject(obj) else { return false }
+            return obj.confidence >= 0.22 || obj.id == selectedSemanticObjectID
+        }
+        let sorted = filtered.sorted(by: { lhs, rhs in
+            if lhs.id == selectedSemanticObjectID { return true }
+            if rhs.id == selectedSemanticObjectID { return false }
+            if lhs.confidence == rhs.confidence {
+                return lhs.id < rhs.id
+            }
+            return lhs.confidence > rhs.confidence
+        })
+        guard sorted.count > Self.maxRenderableSemanticObjects else {
+            return sorted
+        }
+        if let selectedID = selectedSemanticObjectID,
+           let selected = sorted.first(where: { $0.id == selectedID })
+        {
+            let others = sorted.filter { $0.id != selectedID }
+            return [selected] + Array(others.prefix(max(0, Self.maxRenderableSemanticObjects - 1)))
+        }
+        return Array(sorted.prefix(Self.maxRenderableSemanticObjects))
     }
 
     private func makeSemanticBoundingNode(for obj: SemanticSceneObject, in rootNode: SCNNode) -> SCNNode {

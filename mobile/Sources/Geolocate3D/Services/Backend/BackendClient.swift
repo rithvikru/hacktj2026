@@ -152,6 +152,7 @@ final class BackendClient {
     func route(
         roomID: UUID,
         startWorldTransform: simd_float4x4,
+        targetObjectID: String? = nil,
         targetWorldTransform: simd_float4x4? = nil,
         targetLabel: String? = nil,
         gridResolutionM: Float = 0.20,
@@ -164,6 +165,7 @@ final class BackendClient {
         request.httpBody = try JSONEncoder().encode(
             RouteRequest(
                 startWorldTransform16: startWorldTransform.columnMajorArray,
+                targetObjectID: targetObjectID,
                 targetWorldTransform16: targetWorldTransform?.columnMajorArray,
                 targetLabel: targetLabel,
                 gridResolutionM: gridResolutionM,
@@ -820,6 +822,7 @@ private struct ChatRequest: Encodable {
 
 private struct RouteRequest: Encodable {
     let startWorldTransform16: [Float]
+    let targetObjectID: String?
     let targetWorldTransform16: [Float]?
     let targetLabel: String?
     let gridResolutionM: Float
@@ -827,6 +830,7 @@ private struct RouteRequest: Encodable {
 
     private enum CodingKeys: String, CodingKey {
         case startWorldTransform16 = "start_world_transform16"
+        case targetObjectID = "target_object_id"
         case targetWorldTransform16 = "target_world_transform16"
         case targetLabel = "target_label"
         case gridResolutionM = "grid_resolution_m"

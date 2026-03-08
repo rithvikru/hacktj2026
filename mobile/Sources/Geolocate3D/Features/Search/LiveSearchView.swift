@@ -5,6 +5,7 @@ import SwiftData
 
 struct LiveSearchView: View {
     let roomID: UUID?
+    let initialRouteTarget: LiveRouteTarget?
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(SpatialSessionManager.self) private var sessionManager
     @Environment(BackendClient.self) private var backendClient
@@ -12,10 +13,20 @@ struct LiveSearchView: View {
     @State private var viewModel = LiveSearchViewModel()
     @State private var relocMonitor = RelocalizationMonitor()
 
+    init(roomID: UUID?, initialRouteTarget: LiveRouteTarget? = nil) {
+        self.roomID = roomID
+        self.initialRouteTarget = initialRouteTarget
+    }
+
     var body: some View {
         ZStack {
             // AR camera feed via UIKit ARView bridge (Fix 1: iOS-correct, not visionOS RealityView)
-            ARViewRepresentable(viewModel: viewModel, sessionManager: sessionManager)
+            ARViewRepresentable(
+                viewModel: viewModel,
+                sessionManager: sessionManager,
+                roomID: roomID,
+                backendClient: backendClient
+            )
                 .ignoresSafeArea()
 
             // SwiftUI overlay — tooltips positioned via screen-space projection
@@ -146,6 +157,7 @@ struct LiveSearchView: View {
         }
         .task(id: roomID) {
             startSession()
+            viewModel.setInitialRouteTarget(initialRouteTarget)
             await backendClient.checkConnection()
         }
         .onChange(of: sessionManager.trackingState) { _, trackingState in

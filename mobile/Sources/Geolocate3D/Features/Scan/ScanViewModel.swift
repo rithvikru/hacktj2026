@@ -92,6 +92,10 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     }
 
     func stopSession() {
+        if scanState == .scanning || scanState == .initializing {
+            scanState = .processing
+        }
+        liveSpotlightDetections.removeAll()
         stopFrameSampling()
         captureView?.captureSession.stop()
     }

@@ -6,7 +6,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from reconstruction.objects.semantic_scene import build_semantic_scene, _snap_payload_to_support
+from reconstruction.objects.semantic_scene import (
+    build_semantic_scene,
+    _infer_support_relation,
+    _limit_small_object_payloads,
+    _snap_payload_to_support,
+)
 
 
 def test_build_semantic_scene_writes_json_and_low_poly_meshes(
@@ -140,3 +145,91 @@ def test_snap_payload_to_support_places_small_object_on_surface():
     assert payload["support_anchor_xyz"][1] == 0.72
     assert payload["center_xyz"][1] > 0.72
     assert np.allclose(payload["extent_xyz"], [0.14, 0.06, 0.14], atol=1e-6)
+
+
+def test_infer_support_relation_prefers_nearby_desk_for_small_object():
+    payload = {
+        "id": "object-1",
+        "label": "airpods case",
+        "base_anchor_xyz": [1.0, 0.36, -0.25],
+    }
+    surfaces = [
+        {
+            "id": "shelf-1",
+            "label": "shelf",
+            "center_xyz": [0.98, 0.78, -0.27],
+            "extent_xyz": [0.38, 0.31, 0.15],
+            "footprint_xyz": [],
+        },
+        {
+            "id": "desk-1",
+            "label": "desk",
+            "center_xyz": [1.09, 0.89, -0.29],
+            "extent_xyz": [0.28, 0.21, 0.15],
+            "footprint_xyz": [],
+        },
+    ]
+
+    support_relation = _infer_support_relation(payload, surfaces)
+
+    assert support_relation["type"] == "supported_by"
+    assert support_relation["support_object_id"] == "desk-1"
+    assert support_relation["support_label"] == "desk"
+
+
+def test_infer_support_relation_uses_support_hint_to_choose_correct_table():
+    payload = {
+        "id": "object-1",
+        "label": "bottle",
+        "base_anchor_xyz": [1.1, 0.75, 0.2],
+        "support_hint_label": "desk",
+        "support_hint_xyz": [1.2, 0.9, 0.25],
+    }
+    surfaces = [
+        {
+            "id": "desk-left",
+            "label": "desk",
+            "center_xyz": [0.3, 0.8, 0.15],
+            "extent_xyz": [0.8, 0.1, 0.6],
+            "footprint_xyz": [],
+        },
+        {
+            "id": "desk-right",
+            "label": "desk",
+            "center_xyz": [1.18, 0.8, 0.24],
+            "extent_xyz": [0.8, 0.1, 0.6],
+            "footprint_xyz": [],
+        },
+    ]
+
+    support_relation = _infer_support_relation(payload, surfaces)
+
+    assert support_relation["type"] == "supported_by"
+    assert support_relation["support_object_id"] == "desk-right"
+
+
+def test_limit_small_object_payloads_caps_only_portable_objects():
+    payloads = [
+        {
+            "id": "surface-1",
+            "label": "desk",
+            "confidence": 0.99,
+            "supporting_view_count": 4,
+            "mask_supported_views": 2,
+        }
+    ]
+    for index in range(12):
+        payloads.append(
+            {
+                "id": f"small-{index}",
+                "label": "bottle",
+                "confidence": 0.9 - (index * 0.01),
+                "supporting_view_count": 3,
+                "mask_supported_views": 1,
+            }
+        )
+
+    limited = _limit_small_object_payloads(payloads)
+
+    assert sum(1 for item in limited if item["label"] == "desk") == 1
+    assert sum(1 for item in limited if item["label"] == "bottle") == 10

@@ -46,6 +46,12 @@ struct RouteWaypointOverlay: Identifiable {
     }
 }
 
+struct RouteGuidanceTarget {
+    let objectID: String?
+    let label: String
+    let worldTransform: simd_float4x4?
+}
+
 @Observable
 @MainActor
 final class LiveSearchViewModel {
@@ -65,6 +71,13 @@ final class LiveSearchViewModel {
     @ObservationIgnored private var routeVersion = 0
     @ObservationIgnored private var renderedRouteVersion = -1
     @ObservationIgnored private var currentCameraTransform: simd_float4x4?
+    @ObservationIgnored private var routeTarget: RouteGuidanceTarget?
+    @ObservationIgnored private var routeRequestTask: Task<Void, Never>?
+    @ObservationIgnored private var lastRouteRequestDate: Date?
+    @ObservationIgnored private var lastRoutedCameraTransform: simd_float4x4?
+
+    private let rerouteInterval: TimeInterval = 0.9
+    private let rerouteTranslationThreshold: Float = 0.18
 
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
@@ -142,12 +155,59 @@ final class LiveSearchViewModel {
         routeWaypoints.removeAll()
         routeStatusText = nil
         currentCameraTransform = nil
+        routeTarget = nil
+        routeRequestTask?.cancel()
+        routeRequestTask = nil
+        lastRouteRequestDate = nil
+        lastRoutedCameraTransform = nil
         routeVersion = 0
         renderedRouteVersion = -1
     }
 
     func updateCameraTransform(_ transform: simd_float4x4) {
         currentCameraTransform = transform
+    }
+
+    func setInitialRouteTarget(_ target: LiveRouteTarget?) {
+        guard let target else { return }
+        let worldTransform = target.worldTransform16.flatMap(simd_float4x4.fromArray)
+        routeTarget = RouteGuidanceTarget(
+            objectID: target.objectID,
+            label: target.label,
+            worldTransform: worldTransform
+        )
+        if let worldTransform {
+            activeObservations = [
+                ActiveObservation(
+                    id: UUID(),
+                    label: target.label,
+                    confidence: 1.0,
+                    worldTransform: worldTransform,
+                    lastSeen: Date()
+                )
+            ]
+        }
+        currentResult = SearchResult(
+            id: UUID(),
+            query: "locate \(target.label)",
+            resultType: .confirmedHigh,
+            label: target.label,
+            confidence: 1.0,
+            explanation: "Selected object ready for AR guidance.",
+            evidence: ["semantic-room-twin"],
+            timestamp: Date()
+        )
+        routeStatusText = "Move the phone slightly so guidance can lock onto \(target.label)."
+    }
+
+    func handleCameraTransformUpdate(
+        _ transform: simd_float4x4,
+        roomID: UUID?,
+        backendClient: BackendClient
+    ) {
+        currentCameraTransform = transform
+        guard let roomID, routeTarget != nil else { return }
+        requestGuidanceIfNeeded(roomID: roomID, backendClient: backendClient, force: routeWaypoints.isEmpty)
     }
 
     func executeSearch(
@@ -174,6 +234,12 @@ final class LiveSearchViewModel {
         activeObservations = makeActiveObservations(
             from: execution.localObservations,
             backendResults: execution.backendResults
+        )
+        let bestObservation = activeObservations.first
+        routeTarget = RouteGuidanceTarget(
+            objectID: nil,
+            label: bestObservation?.label ?? execution.result.label,
+            worldTransform: bestObservation?.worldTransform
         )
 
         await updateRoute(
@@ -229,17 +295,67 @@ final class LiveSearchViewModel {
             routeStatusText = "Found a result. Move the phone a bit more so guidance can lock in."
             return
         }
+        lastRoutedCameraTransform = startTransform
+        lastRouteRequestDate = Date()
+        await requestRoute(
+            roomID: roomID,
+            startTransform: startTransform,
+            backendClient: backendClient
+        )
+    }
 
-        let bestObservation = activeObservations.first
-        let targetLabel = bestObservation?.label ?? execution.result.label
-        let targetTransform = bestObservation?.worldTransform
+    private func clearRoute(status: String?) {
+        routeWaypoints.removeAll()
+        routeStatusText = status
+        routeVersion += 1
+    }
+
+    private func requestGuidanceIfNeeded(
+        roomID: UUID,
+        backendClient: BackendClient,
+        force: Bool = false
+    ) {
+        guard let startTransform = currentCameraTransform else { return }
+        guard routeRequestTask == nil else { return }
+
+        if !force {
+            if let lastRouteRequestDate, Date().timeIntervalSince(lastRouteRequestDate) < rerouteInterval {
+                return
+            }
+            if let lastRoutedCameraTransform,
+               translationDistance(from: lastRoutedCameraTransform, to: startTransform) < rerouteTranslationThreshold,
+               !routeWaypoints.isEmpty {
+                return
+            }
+        }
+
+        routeRequestTask = Task { [weak self] in
+            guard let self else { return }
+            self.lastRoutedCameraTransform = startTransform
+            self.lastRouteRequestDate = Date()
+            await self.requestRoute(
+                roomID: roomID,
+                startTransform: startTransform,
+                backendClient: backendClient
+            )
+            self.routeRequestTask = nil
+        }
+    }
+
+    private func requestRoute(
+        roomID: UUID,
+        startTransform: simd_float4x4,
+        backendClient: BackendClient
+    ) async {
+        guard let routeTarget else { return }
 
         do {
             let route = try await backendClient.route(
                 roomID: roomID,
                 startWorldTransform: startTransform,
-                targetWorldTransform: targetTransform,
-                targetLabel: targetLabel.isEmpty ? nil : targetLabel
+                targetObjectID: routeTarget.objectID,
+                targetWorldTransform: routeTarget.worldTransform,
+                targetLabel: routeTarget.label.isEmpty ? nil : routeTarget.label
             )
 
             guard route.reachable else {
@@ -266,21 +382,39 @@ final class LiveSearchViewModel {
             routeWaypoints = waypoints
             routeVersion += 1
 
-            let label = route.targetLabel ?? targetLabel
+            let label = route.targetLabel ?? routeTarget.label
             let count = waypoints.count
             let markerWord = count == 1 ? "marker" : "markers"
-            routeStatusText = label.isEmpty
-                ? "Guidance ready. \(count) \(markerWord) loaded."
-                : "Guidance to \(label) ready. \(count) \(markerWord)."
+            let remainingDistance = routeDistanceMeters(for: waypoints)
+            if remainingDistance <= 0.45 {
+                routeStatusText = label.isEmpty
+                    ? "You’re at the target."
+                    : "\(label) should be right here."
+            } else {
+                routeStatusText = label.isEmpty
+                    ? String(format: "Guidance ready. %.1f m remaining.", remainingDistance)
+                    : String(format: "Guidance to %@ ready. %.1f m remaining.", label, remainingDistance)
+                if count > 1 {
+                    routeStatusText?.append(" \(count) \(markerWord).")
+                }
+            }
         } catch {
             routeStatusText = "Guidance failed: \(error.localizedDescription)"
         }
     }
 
-    private func clearRoute(status: String?) {
-        routeWaypoints.removeAll()
-        routeStatusText = status
-        routeVersion += 1
+    private func routeDistanceMeters(for waypoints: [RouteWaypointOverlay]) -> Float {
+        guard waypoints.count >= 2 else { return 0 }
+        return zip(waypoints, waypoints.dropFirst()).reduce(0) { partial, pair in
+            partial + simd_distance(pair.0.position, pair.1.position)
+        }
+    }
+
+    private func translationDistance(from lhs: simd_float4x4, to rhs: simd_float4x4) -> Float {
+        simd_distance(
+            SIMD3(lhs.columns.3.x, lhs.columns.3.y, lhs.columns.3.z),
+            SIMD3(rhs.columns.3.x, rhs.columns.3.y, rhs.columns.3.z)
+        )
     }
 
     private func syncRouteOverlay(in arView: ARView) {

@@ -107,3 +107,37 @@ def test_plan_route_targets_support_edge_for_object_on_surface():
     assert goal is not None
     assert goal[12] < 1.4
     assert abs(goal[14]) <= 0.75
+
+
+def test_plan_route_can_target_exact_object_id_when_labels_repeat():
+    room = RoomState(room_id="room-3", name="demo")
+    room.observations = [
+        {
+            "id": "phone-left",
+            "label": "phone",
+            "worldTransform16": tf(1.0, 0.8, 0.0),
+            "center_xyz": [1.0, 0.8, 0.0],
+            "extent_xyz": [0.16, 0.03, 0.08],
+        },
+        {
+            "id": "phone-right",
+            "label": "phone",
+            "worldTransform16": tf(4.0, 0.8, 0.0),
+            "center_xyz": [4.0, 0.8, 0.0],
+            "extent_xyz": [0.16, 0.03, 0.08],
+        },
+    ]
+
+    result = plan_route(
+        room=room,
+        start_world_transform16=tf(0.0, 0.0, 0.0),
+        target_object_id="phone-right",
+        target_label="phone",
+        grid_resolution_m=0.25,
+        obstacle_inflation_radius_m=0.10,
+    )
+
+    assert result["reachable"] is True
+    goal = result["snappedGoalWorldTransform16"]
+    assert goal is not None
+    assert goal[12] > 3.5

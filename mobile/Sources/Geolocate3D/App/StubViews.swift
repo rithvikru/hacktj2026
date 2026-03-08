@@ -192,7 +192,7 @@ struct ScanResultsStubView: View {
 
                     Button("Start Live Search") {
                         dismiss()
-                        coordinator.presentImmersive(.liveSearch(roomID: roomID))
+                        coordinator.presentImmersive(.liveSearch(roomID: roomID, target: nil))
                     }
                     .font(SpatialFont.subheadline)
                     .foregroundStyle(.spatialCyan)

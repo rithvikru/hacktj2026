@@ -61,6 +61,13 @@ struct ScanRoomView: View {
                         .padding(.leading, 16)
                     }
                     Spacer()
+                    if viewModel.scanState == .scanning {
+                        Button("Stop Scan") {
+                            viewModel.stopSession()
+                        }
+                        .buttonStyle(SecondarySpatialButtonStyle())
+                        .transition(.scale.combined(with: .opacity))
+                    }
                     if viewModel.scanState == .ready {
                         Button("Save Room") {
                             Task {

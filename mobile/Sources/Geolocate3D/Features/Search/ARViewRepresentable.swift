@@ -7,9 +7,16 @@ import ARKit
 struct ARViewRepresentable: UIViewRepresentable {
     let viewModel: LiveSearchViewModel
     let sessionManager: SpatialSessionManager
+    let roomID: UUID?
+    let backendClient: BackendClient
 
     func makeCoordinator() -> ARViewCoordinator {
-        ARViewCoordinator(sessionManager: sessionManager, viewModel: viewModel)
+        ARViewCoordinator(
+            sessionManager: sessionManager,
+            viewModel: viewModel,
+            roomID: roomID,
+            backendClient: backendClient
+        )
     }
 
     func makeUIView(context: Context) -> ARView {

@@ -37,3 +37,15 @@ def test_deduplicate_detections_keeps_best_overlapping_box():
 
     assert len(deduped) == 2
     assert deduped[0].confidence == 0.91
+
+
+def test_deduplicate_detections_keeps_different_label_families_on_same_box():
+    detections = [
+        Detection("frame.jpg", [0.10, 0.10, 0.40, 0.40], 0.91, "airpods case"),
+        Detection("frame.jpg", [0.11, 0.11, 0.41, 0.41], 0.88, "laptop"),
+    ]
+
+    deduped = deduplicate_detections(detections)
+
+    assert len(deduped) == 2
+    assert {item.label for item in deduped} == {"airpods case", "laptop"}

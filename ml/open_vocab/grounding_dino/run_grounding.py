@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from pathlib import Path
 
 import logging
@@ -15,25 +14,19 @@ class Detection:
     bbox_xyxy_norm: list[float]
     confidence: float
     label: str
+    support_hint_label: str | None = None
+    support_hint_xyz: list[float] | None = None
 
 
 _model = None
 _processor = None
 
 
-def _detector_provider() -> str:
-    provider = os.getenv("OPEN_VOCAB_DETECTOR_PROVIDER", "grounding_dino").strip().lower()
-    return provider or "grounding_dino"
-
-
-def _allow_provider_fallback() -> bool:
-    return os.getenv("OPEN_VOCAB_ALLOW_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _load_model():
     global _model, _processor
     if _model is None:
         import torch
+        import os
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
         model_id = os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny")
@@ -58,31 +51,6 @@ def detect(
     max_prompt_variants: int | None = None,
     max_tiles_per_frame: int | None = None,
 ) -> list[Detection]:
-    if _detector_provider() == "gemini":
-        try:
-            from open_vocab.gemini.run_gemini import detect as gemini_detect
-
-            return [
-                Detection(
-                    image_path=item.image_path,
-                    bbox_xyxy_norm=item.bbox_xyxy_norm,
-                    confidence=item.confidence,
-                    label=item.label,
-                )
-                for item in gemini_detect(
-                    image_paths=image_paths,
-                    text_prompt=text_prompt,
-                    box_threshold=box_threshold,
-                    text_threshold=text_threshold,
-                    max_prompt_variants=max_prompt_variants,
-                    max_tiles_per_frame=max_tiles_per_frame,
-                )
-            ]
-        except Exception as exc:
-            if not _allow_provider_fallback():
-                raise
-            logger.warning("Gemini detection failed; falling back to Grounding DINO: %s", exc)
-
     from PIL import Image
 
     model, processor = _load_model()
@@ -156,31 +124,6 @@ def detect_regions(
     text_threshold: float = 0.25,
     max_prompt_variants: int | None = None,
 ) -> list[Detection]:
-    if _detector_provider() == "gemini":
-        try:
-            from open_vocab.gemini.run_gemini import detect_regions as gemini_detect_regions
-
-            return [
-                Detection(
-                    image_path=item.image_path,
-                    bbox_xyxy_norm=item.bbox_xyxy_norm,
-                    confidence=item.confidence,
-                    label=item.label,
-                )
-                for item in gemini_detect_regions(
-                    image_path=image_path,
-                    regions_xyxy_norm=regions_xyxy_norm,
-                    text_prompt=text_prompt,
-                    box_threshold=box_threshold,
-                    text_threshold=text_threshold,
-                    max_prompt_variants=max_prompt_variants,
-                )
-            ]
-        except Exception as exc:
-            if not _allow_provider_fallback():
-                raise
-            logger.warning("Gemini region detection failed; falling back to Grounding DINO: %s", exc)
-
     from PIL import Image
 
     model, processor = _load_model()
@@ -240,11 +183,53 @@ def deduplicate_detections(detections: list[Detection], iou_threshold: float = 0
         ordered = sorted(group, key=lambda detection: detection.confidence, reverse=True)
         kept: list[Detection] = []
         for candidate in ordered:
-            if any(_iou(candidate.bbox_xyxy_norm, existing.bbox_xyxy_norm) >= iou_threshold for existing in kept):
+            candidate_family = _label_family(candidate.label)
+            if any(
+                _label_family(existing.label) == candidate_family
+                and _iou(candidate.bbox_xyxy_norm, existing.bbox_xyxy_norm) >= iou_threshold
+                for existing in kept
+            ):
                 continue
             kept.append(candidate)
         merged.extend(kept)
     return merged
+
+
+def _label_family(label: str) -> str:
+    normalized = label.strip().lower()
+    families = {
+        "phone": "phone",
+        "mobile phone": "phone",
+        "smartphone": "phone",
+        "iphone": "phone",
+        "airpods": "airpods case",
+        "airpods case": "airpods case",
+        "earbuds": "airpods case",
+        "earbuds case": "airpods case",
+        "charging case": "airpods case",
+        "bag": "bag",
+        "tote bag": "bag",
+        "shopping bag": "bag",
+        "handbag": "bag",
+        "backpack": "backpack",
+        "book bag": "backpack",
+        "school bag": "backpack",
+        "bottle": "bottle",
+        "water bottle": "bottle",
+        "plastic bottle": "bottle",
+        "can": "can",
+        "drink can": "can",
+        "soda can": "can",
+        "aluminum can": "can",
+        "coke can": "can",
+        "tissue": "tissue box",
+        "tissues": "tissue box",
+        "tissue box": "tissue box",
+        "box of tissues": "tissue box",
+        "notebook computer": "laptop",
+        "macbook": "laptop",
+    }
+    return families.get(normalized, normalized)
 
 
 def _run_detection_pass(
@@ -417,6 +402,10 @@ def _prompt_profile(text_prompt: str) -> dict[str, object]:
         "phone": {"phone", "mobile phone", "smartphone", "iphone"},
         "iphone": {"iphone", "phone", "smartphone", "mobile phone"},
         "smartphone": {"smartphone", "phone", "mobile phone", "iphone"},
+        "laptop": {"laptop", "notebook computer", "macbook"},
+        "backpack": {"backpack", "book bag", "school bag"},
+        "bag": {"bag", "tote bag", "shopping bag", "handbag"},
+        "tote bag": {"tote bag", "bag", "shopping bag", "canvas bag"},
         "airpods": {"airpods case", "earbuds case", "charging case", "small earbuds case"},
         "airpods case": {"airpods case", "earbuds case", "charging case", "small earbuds case"},
         "earbuds": {"earbuds case", "airpods case", "charging case"},
@@ -432,6 +421,16 @@ def _prompt_profile(text_prompt: str) -> dict[str, object]:
         "glasses": {"glasses", "eyeglasses", "spectacles"},
         "keys": {"keys", "keychain", "car keys"},
         "charger": {"charger", "charging cable", "power adapter"},
+        "plate": {"plate", "dish", "dinner plate"},
+        "paper": {"paper", "sheet of paper", "document"},
+        "notebook": {"notebook", "spiral notebook", "journal"},
+        "clipboard": {"clipboard", "clip board"},
+        "pen": {"pen", "ballpoint pen", "marker"},
+        "shoe": {"shoe", "sneaker", "running shoe"},
+        "tv": {"tv", "television", "monitor"},
+        "box": {"box", "cardboard box", "storage box"},
+        "tissue": {"tissue box", "box of tissues", "tissues"},
+        "tissue box": {"tissue box", "box of tissues", "tissues"},
     }
 
     for token, variants in alias_map.items():
@@ -450,12 +449,25 @@ def _prompt_profile(text_prompt: str) -> dict[str, object]:
         "keys",
         "wallet",
         "glasses",
+        "laptop",
+        "backpack",
+        "bag",
         "bottle",
         "water bottle",
         "can",
         "coke can",
         "soda can",
         "drink can",
+        "plate",
+        "paper",
+        "notebook",
+        "clipboard",
+        "pen",
+        "shoe",
+        "tv",
+        "box",
+        "tissue",
+        "tissue box",
         "pringles",
         "pringles can",
     }

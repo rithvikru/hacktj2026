@@ -162,6 +162,26 @@ def _run_pipeline(
             output_dir,
         )
         pc, ply_path, preview_mesh_path, pointcloud_duration = pointcloud_future.result()
+
+        if preview_callback is not None:
+            preview_assets = {
+                "pointCloudURL": f"/rooms/{room_id}/assets/pointcloud.ply",
+            }
+            if preview_mesh_path and preview_mesh_path.exists():
+                preview_assets["denseAssetURL"] = f"/rooms/{room_id}/assets/{preview_mesh_path.name}"
+                preview_assets["denseAssetKind"] = "low_poly_mesh"
+                preview_assets["denseRenderer"] = "scenekit_mesh"
+                preview_assets["densePhotorealReady"] = False
+                preview_assets["denseTrainingBackend"] = "fast_preview_mesh"
+
+            preview_callback(
+                {
+                    "assets": preview_assets,
+                    "observations": [],
+                    "scene_graph": None,
+                }
+            )
+
         semantic_result, semantic_duration = semantic_future.result()
 
     stage_durations["pointcloud_seconds"] = pointcloud_duration

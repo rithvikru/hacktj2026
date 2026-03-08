@@ -371,7 +371,12 @@ def _distance_xz(a, b):
     return sqrt((a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2)
 
 
-def _resolve_target_context(room, target_label=None, target_world_transform16=None):
+def _resolve_target_context(room, target_object_id=None, target_label=None, target_world_transform16=None):
+    if target_object_id:
+        context = _find_context_by_id(room, target_object_id)
+        if context is not None:
+            return context
+
     requested_xyz = tf_to_xyz(target_world_transform16)
     candidates = []
     for observation in room.observations:
@@ -520,12 +525,12 @@ def _goal_reason(target_context, support_context):
     return "target_center"
 
 
-def plan_route(room, start_world_transform16, target_world_transform16=None, target_label=None, grid_resolution_m=0.20, obstacle_inflation_radius_m=0.25):
+def plan_route(room, start_world_transform16, target_object_id=None, target_world_transform16=None, target_label=None, grid_resolution_m=0.20, obstacle_inflation_radius_m=0.25):
     start_xyz = tf_to_xyz(start_world_transform16)
     if start_xyz is None:
         return {"reachable": False, "reason": "invalid start transform", "waypoints": []}
 
-    target_context = _resolve_target_context(room, target_label, target_world_transform16)
+    target_context = _resolve_target_context(room, target_object_id, target_label, target_world_transform16)
     if target_context is None:
         return {"reachable": False, "reason": "target not found", "waypoints": []}
     target_xyz = target_context.center_xyz or tf_to_xyz(target_context.world_transform16)

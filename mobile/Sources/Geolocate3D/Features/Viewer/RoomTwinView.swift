@@ -104,7 +104,16 @@ struct RoomTwinView: View {
                     SemanticObjectInfoCard(
                         object: selectedObj,
                         onLocateInAR: {
-                            coordinator.presentImmersive(.liveSearch(roomID: roomID))
+                            coordinator.presentImmersive(
+                                .liveSearch(
+                                    roomID: roomID,
+                                    target: LiveRouteTarget(
+                                        objectID: selectedObj.id,
+                                        label: selectedObj.label,
+                                        worldTransform16: selectedObj.worldTransform16 ?? semanticObjectFallbackTransform(for: selectedObj)
+                                    )
+                                )
+                            )
                         },
                         onDismiss: {
                             viewModel.deselectSemanticObject()
@@ -135,7 +144,7 @@ struct RoomTwinView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Live Search", systemImage: "arkit") {
-                        coordinator.presentImmersive(.liveSearch(roomID: roomID))
+                        coordinator.presentImmersive(.liveSearch(roomID: roomID, target: nil))
                     }
                     Button("Query", systemImage: "text.magnifyingglass") {
                         coordinator.presentSheet(.queryConsole(roomID: roomID))
@@ -249,6 +258,26 @@ struct RoomTwinView: View {
     private var isSuccessStatus: Bool {
         guard let msg = effectiveStatusLine else { return false }
         return msg.contains("ready")
+    }
+
+    private func semanticObjectFallbackTransform(for object: SemanticSceneObject) -> [Float]? {
+        if let center = object.centerXYZ, center.count >= 3 {
+            return [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                center[0], center[1], center[2], 1.0
+            ]
+        }
+        if let base = object.baseAnchorXYZ, base.count >= 3 {
+            return [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                base[0], base[1], base[2], 1.0
+            ]
+        }
+        return nil
     }
 }
 

@@ -46,6 +46,10 @@ SEMANTIC_SURFACE_TEXT_THRESHOLD = float(
 )
 SEMANTIC_REGION_PADDING_X = float(os.getenv("SEMANTIC_REGION_PADDING_X", "0.10"))
 SEMANTIC_REGION_PADDING_Y = float(os.getenv("SEMANTIC_REGION_PADDING_Y", "0.14"))
+SEMANTIC_MAX_SMALL_OBJECTS = int(os.getenv("SEMANTIC_MAX_SMALL_OBJECTS", "10"))
+SEMANTIC_RELABEL_WITH_CLIP = os.getenv("SEMANTIC_RELABEL_WITH_CLIP", "1") != "0"
+SEMANTIC_RELABEL_MIN_SIMILARITY = float(os.getenv("SEMANTIC_RELABEL_MIN_SIMILARITY", "0.16"))
+SEMANTIC_RELABEL_MARGIN = float(os.getenv("SEMANTIC_RELABEL_MARGIN", "0.015"))
 SMALL_OBJECT_MARKER_EXTENT = np.array([0.14, 0.06, 0.14], dtype=np.float32)
 
 SUPPORT_SURFACE_LABELS = {
@@ -57,6 +61,18 @@ SUPPORT_SURFACE_LABELS = {
     "dresser",
     "bed",
     "couch",
+}
+
+PRIMARY_SMALL_OBJECT_SUPPORT_LABELS = {
+    "table",
+    "desk",
+    "counter",
+    "nightstand",
+    "dresser",
+}
+
+SECONDARY_SMALL_OBJECT_SUPPORT_LABELS = {
+    "shelf",
 }
 
 SMALL_OBJECT_LABELS = [
@@ -71,17 +87,25 @@ SMALL_OBJECT_LABELS = [
     "charger",
     "tv remote",
     "backpack",
+    "bag",
     "book",
     "notebook",
+    "clipboard",
+    "paper",
+    "pen",
     "bottle",
+    "water bottle",
     "can",
     "mug",
     "bowl",
     "plate",
+    "box",
+    "tissue box",
     "shoe",
     "lamp",
     "speaker",
     "monitor",
+    "tv",
 ]
 
 HIGH_PRIORITY_SMALL_OBJECT_LABELS = [
@@ -94,10 +118,18 @@ HIGH_PRIORITY_SMALL_OBJECT_LABELS = [
     "charger",
     "tv remote",
     "backpack",
+    "bag",
     "book",
     "notebook",
+    "clipboard",
+    "paper",
+    "pen",
     "bottle",
+    "water bottle",
     "can",
+    "plate",
+    "box",
+    "tissue box",
     "mug",
 ]
 
@@ -117,6 +149,8 @@ class ObjectView:
     colors_rgb: np.ndarray
     center_xyz: np.ndarray
     support_anchor_xyz: np.ndarray
+    support_hint_label: str | None = None
+    support_hint_xyz: np.ndarray | None = None
 
 
 @dataclass(slots=True)
@@ -218,6 +252,7 @@ def build_semantic_scene(
         _snap_payload_to_support(payload, support_relation)
 
     objects_payload = _deduplicate_payloads(objects_payload)
+    objects_payload = _limit_small_object_payloads(objects_payload)
 
     observations = []
     for payload in objects_payload:
@@ -269,7 +304,7 @@ def _extract_object_views(
     text_threshold: float = 0.20,
     max_prompt_variants: int = 1,
     max_tiles_per_frame: int = 2,
-    crop_regions_by_image_path: dict[str, list[list[float]]] | None = None,
+    crop_regions_by_image_path: dict[str, list[dict[str, Any]]] | None = None,
     per_label_prompts: bool = False,
 ) -> list[ObjectView]:
     if not labels:
@@ -284,16 +319,19 @@ def _extract_object_views(
                 continue
             prompts = labels if per_label_prompts else [" . ".join(labels)]
             for prompt in prompts:
-                detections.extend(
-                    detect_regions(
+                for region_hint in regions:
+                    region_detections = detect_regions(
                         frame.image_path,
-                        regions,
+                        [region_hint["bbox_xyxy_norm"]],
                         prompt,
                         box_threshold=box_threshold,
                         text_threshold=text_threshold,
                         max_prompt_variants=max_prompt_variants,
                     )
-                )
+                    for detection in region_detections:
+                        detection.support_hint_label = region_hint.get("support_label")
+                        detection.support_hint_xyz = region_hint.get("support_hint_xyz")
+                    detections.extend(region_detections)
     else:
         image_paths = [frame.image_path for frame in selected_frames]
         prompts = labels if per_label_prompts else [" . ".join(labels)]
@@ -337,6 +375,14 @@ def _extract_object_views(
             canonical_label = _canonicalize_label(str(detection.label), labels)
             if canonical_label is None:
                 continue
+            relabeled = _relabel_detection(
+                image=image,
+                detection=detection,
+                canonical_label=canonical_label,
+                inventory=labels,
+            )
+            canonical_label = relabeled["label"]
+            relabel_confidence = relabeled["confidence"]
             mask = masks[index] if index < len(masks) else None
             view = _project_object_view(
                 frame=candidate_frame,
@@ -344,6 +390,7 @@ def _extract_object_views(
                 canonical_label=canonical_label,
                 image=image,
                 mask=mask,
+                override_score=relabel_confidence,
             )
             if view is not None:
                 views.append(view)
@@ -358,6 +405,7 @@ def _project_object_view(
     canonical_label: str,
     image: np.ndarray,
     mask: Any,
+    override_score: float | None = None,
 ) -> ObjectView | None:
     if frame.depth_path is None or not frame.depth_path.exists():
         return None
@@ -419,7 +467,7 @@ def _project_object_view(
     frame_id = str(frame.frame.get("frame_id") or frame.frame.get("id") or image_path_stem(frame.image_path))
     return ObjectView(
         label=canonical_label,
-        score=float(detection.confidence),
+        score=float(override_score if override_score is not None else detection.confidence),
         frame_id=frame_id,
         image_path=str(frame.image_path),
         bbox_xyxy_norm=[float(value) for value in detection.bbox_xyxy_norm],
@@ -428,6 +476,8 @@ def _project_object_view(
         colors_rgb=colors.astype(np.uint8),
         center_xyz=center,
         support_anchor_xyz=support_anchor,
+        support_hint_label=getattr(detection, "support_hint_label", None),
+        support_hint_xyz=_support_hint_array(getattr(detection, "support_hint_xyz", None)),
     )
 
 
@@ -571,28 +621,48 @@ def high_priority_small_labels(labels: list[str]) -> list[str]:
 def _build_support_regions(
     selected_frames: list[ReconstructionFrame],
     surface_views: list[ObjectView],
-) -> dict[str, list[list[float]]]:
-    regions_by_image_path: dict[str, list[list[float]]] = {}
+) -> dict[str, list[dict[str, Any]]]:
+    regions_by_image_path: dict[str, list[dict[str, Any]]] = {}
     if not surface_views:
         for frame in selected_frames:
-            regions_by_image_path[str(frame.image_path)] = [[0.0, 0.0, 1.0, 1.0]]
+            regions_by_image_path[str(frame.image_path)] = [
+                {
+                    "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+                    "support_label": None,
+                    "support_hint_xyz": None,
+                }
+            ]
         return regions_by_image_path
 
     for frame in selected_frames:
         image_key = str(frame.image_path)
-        regions: list[list[float]] = []
+        regions: list[dict[str, Any]] = []
+        preferred_regions: list[dict[str, Any]] = []
         for view in surface_views:
             if view.image_path != image_key or view.label not in SUPPORT_SURFACE_LABELS:
                 continue
-            regions.append(
-                _expanded_bbox(
+            region = {
+                "bbox_xyxy_norm": _expanded_bbox(
                     view.bbox_xyxy_norm,
                     pad_x=SEMANTIC_REGION_PADDING_X,
                     pad_y=SEMANTIC_REGION_PADDING_Y,
-                )
-            )
+                ),
+                "support_label": view.label,
+                "support_hint_xyz": view.center_xyz.astype(float).tolist(),
+            }
+            regions.append(region)
+            if view.label in PRIMARY_SMALL_OBJECT_SUPPORT_LABELS or view.label in SECONDARY_SMALL_OBJECT_SUPPORT_LABELS:
+                preferred_regions.append(region)
+        if preferred_regions:
+            regions = preferred_regions
         if not regions:
-            regions = [[0.0, 0.0, 1.0, 1.0]]
+            regions = [
+                {
+                    "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+                    "support_label": None,
+                    "support_hint_xyz": None,
+                }
+            ]
         regions_by_image_path[image_key] = _deduplicate_regions(regions)
     return regions_by_image_path
 
@@ -612,10 +682,14 @@ def _expanded_bbox(
     ]
 
 
-def _deduplicate_regions(regions: list[list[float]]) -> list[list[float]]:
-    deduped: list[list[float]] = []
-    for region in sorted(regions, key=_bbox_area, reverse=True):
-        if any(_bbox_iou(region, existing) >= 0.65 for existing in deduped):
+def _deduplicate_regions(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    for region in sorted(regions, key=lambda item: _bbox_area(item["bbox_xyxy_norm"]), reverse=True):
+        if any(
+            _bbox_iou(region["bbox_xyxy_norm"], existing["bbox_xyxy_norm"]) >= 0.65
+            and region.get("support_label") == existing.get("support_label")
+            for existing in deduped
+        ):
             continue
         deduped.append(region)
     return deduped[:4]
@@ -637,6 +711,20 @@ def _deduplicate_payloads(objects_payload: list[dict[str, Any]]) -> list[dict[st
         if not duplicate:
             deduped.append(payload)
     return deduped
+
+
+def _limit_small_object_payloads(objects_payload: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    surfaces = [payload for payload in objects_payload if payload.get("label") in SURFACE_LABELS]
+    small_objects = [payload for payload in objects_payload if payload.get("label") not in SURFACE_LABELS]
+    small_objects.sort(
+        key=lambda item: (
+            float(item.get("confidence", 0.0)),
+            int(item.get("supporting_view_count", 0)),
+            int(item.get("mask_supported_views", 0)),
+        ),
+        reverse=True,
+    )
+    return surfaces + small_objects[: max(0, SEMANTIC_MAX_SMALL_OBJECTS)]
 
 
 def _bbox_area(bbox_xyxy_norm: list[float]) -> float:
@@ -707,6 +795,8 @@ def _cluster_to_payload(
         "observed_frame_ids": sorted({view.frame_id for view in cluster.views}),
         "mask_supported_views": sum(1 for view in cluster.views if view.mask_available),
         "bbox_fallback_views": sum(1 for view in cluster.views if not view.mask_available),
+        "support_hint_label": _cluster_support_hint_label(cluster),
+        "support_hint_xyz": _cluster_support_hint_xyz(cluster),
     }
 
 
@@ -809,16 +899,31 @@ def _write_proxy_obj(output_path: Path, label: str, extent: np.ndarray) -> str:
     elif any(token in label_key for token in ("laptop",)):
         vertices, faces = _make_laptop_proxy(extent)
         mesh_kind = "semantic_proxy_laptop"
-    elif any(token in label_key for token in ("phone", "wallet", "airpods", "remote", "keyboard", "mouse", "book", "notebook")):
+    elif any(
+        token in label_key
+        for token in (
+            "phone",
+            "wallet",
+            "airpods",
+            "remote",
+            "keyboard",
+            "mouse",
+            "book",
+            "notebook",
+            "clipboard",
+            "paper",
+            "pen",
+        )
+    ):
         vertices, faces = _make_slab_proxy(extent)
         mesh_kind = "semantic_proxy_slab"
-    elif any(token in label_key for token in ("backpack", "bag")):
+    elif any(token in label_key for token in ("backpack", "bag", "tote")):
         vertices, faces = _make_backpack_proxy(extent)
         mesh_kind = "semantic_proxy_backpack"
     elif any(token in label_key for token in ("lamp",)):
         vertices, faces = _make_lamp_proxy(extent)
         mesh_kind = "semantic_proxy_lamp"
-    elif any(token in label_key for token in ("charger", "speaker", "monitor")):
+    elif any(token in label_key for token in ("charger", "speaker", "monitor", "tv", "box", "tissue")):
         vertices, faces = _make_box_proxy(extent)
         mesh_kind = "semantic_proxy_box"
     else:
@@ -1034,22 +1139,46 @@ def _infer_support_relation(
         }
 
     anchor = np.array(payload["base_anchor_xyz"], dtype=np.float32)
+    support_hint_label = str(payload.get("support_hint_label") or "").lower()
+    support_hint_xyz = _support_hint_array(payload.get("support_hint_xyz"))
     best_surface = None
     best_score = None
     for surface in surface_objects:
         if surface["id"] == payload["id"]:
             continue
+        support_label = str(surface.get("label") or "").lower()
         surface_center = np.array(surface["center_xyz"], dtype=np.float32)
         surface_extent = np.array(surface["extent_xyz"], dtype=np.float32)
         top_y = surface_center[1] + (surface_extent[1] * 0.5)
         vertical_gap = float(anchor[1] - top_y)
-        if vertical_gap < -0.08 or vertical_gap > 0.35:
+
+        below_surface_limit = 0.25
+        radius_pad = 0.05
+        radius_scale = 0.75
+        label_penalty = 0.65
+        if support_label in PRIMARY_SMALL_OBJECT_SUPPORT_LABELS:
+            below_surface_limit = 1.10
+            radius_pad = 0.35
+            radius_scale = 1.20
+            label_penalty = 0.0
+        elif support_label in SECONDARY_SMALL_OBJECT_SUPPORT_LABELS:
+            below_surface_limit = 0.85
+            radius_pad = 0.20
+            radius_scale = 1.00
+            label_penalty = 0.35
+
+        if vertical_gap < -below_surface_limit or vertical_gap > 0.45:
             continue
         horizontal_distance = _horizontal_distance_to_surface(anchor[[0, 2]], surface)
-        radius = float(max(surface_extent[0], surface_extent[2]) * 0.75)
+        radius = float(max(surface_extent[0], surface_extent[2]) * radius_scale + radius_pad)
         if horizontal_distance > radius:
             continue
-        score = horizontal_distance + abs(vertical_gap) * 0.5
+        score = horizontal_distance + abs(vertical_gap) * 0.2 + label_penalty
+        if support_hint_label and support_label == support_hint_label:
+            score -= 0.22
+        if support_hint_xyz is not None:
+            hint_distance = float(np.linalg.norm(surface_center[[0, 2]] - support_hint_xyz[[0, 2]]))
+            score += hint_distance * 0.45
         if best_score is None or score < best_score:
             best_score = score
             best_surface = surface
@@ -1147,6 +1276,94 @@ def _rotation_y(yaw: float) -> np.ndarray:
     transform[2, 0] = -sin_yaw
     transform[2, 2] = cos_yaw
     return transform
+
+
+def _support_hint_array(value: Any) -> np.ndarray | None:
+    if value is None:
+        return None
+    array = np.array(value, dtype=np.float32).reshape(-1)
+    if array.size < 3:
+        return None
+    return array[:3]
+
+
+def _cluster_support_hint_label(cluster: ObjectCluster) -> str | None:
+    counts: dict[str, int] = {}
+    for view in cluster.views:
+        if not view.support_hint_label:
+            continue
+        counts[view.support_hint_label] = counts.get(view.support_hint_label, 0) + 1
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+
+def _cluster_support_hint_xyz(cluster: ObjectCluster) -> list[float] | None:
+    hint_points = [view.support_hint_xyz for view in cluster.views if view.support_hint_xyz is not None]
+    if not hint_points:
+        return None
+    return np.median(np.stack(hint_points, axis=0), axis=0).astype(float).tolist()
+
+
+def _relabel_detection(
+    *,
+    image: np.ndarray,
+    detection: Any,
+    canonical_label: str,
+    inventory: list[str],
+) -> dict[str, Any]:
+    if not SEMANTIC_RELABEL_WITH_CLIP or canonical_label in SURFACE_LABELS:
+        return {"label": canonical_label, "confidence": float(detection.confidence)}
+
+    candidate_labels = [label for label in inventory if label in SMALL_OBJECT_LABELS]
+    if canonical_label not in candidate_labels:
+        candidate_labels.append(canonical_label)
+    if not candidate_labels:
+        return {"label": canonical_label, "confidence": float(detection.confidence)}
+
+    try:
+        import torch
+        from PIL import Image as PILImage
+
+        from open_vocab.retrieval.build_index import _crop_with_context, _load_clip
+    except Exception:
+        return {"label": canonical_label, "confidence": float(detection.confidence)}
+
+    crop, _ = _crop_with_context(image, detection.bbox_xyxy_norm)
+    if crop.size == 0:
+        return {"label": canonical_label, "confidence": float(detection.confidence)}
+
+    try:
+        model, preprocess, tokenizer = _load_clip()
+        device = next(model.parameters()).device
+        tokens = tokenizer([f"a photo of a {label}" for label in candidate_labels]).to(device)
+        tensor = preprocess(PILImage.fromarray(crop)).unsqueeze(0).to(device)
+        with torch.no_grad():
+            image_features = model.encode_image(tensor)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            text_features = model.encode_text(tokens)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            scores = (image_features @ text_features.T).squeeze(0).detach().cpu().numpy()
+    except Exception:
+        logger.exception("CLIP relabel failed for semantic detection")
+        return {"label": canonical_label, "confidence": float(detection.confidence)}
+
+    best_index = int(np.argmax(scores))
+    best_label = candidate_labels[best_index]
+    best_score = float(scores[best_index])
+    current_score = best_score
+    if canonical_label in candidate_labels:
+        current_score = float(scores[candidate_labels.index(canonical_label)])
+
+    if (
+        best_label != canonical_label
+        and best_score >= SEMANTIC_RELABEL_MIN_SIMILARITY
+        and best_score >= current_score + SEMANTIC_RELABEL_MARGIN
+    ):
+        adjusted_confidence = min(max(float(detection.confidence) * 0.85 + best_score * 0.15, 0.0), 0.99)
+        return {"label": best_label, "confidence": adjusted_confidence}
+
+    return {"label": canonical_label, "confidence": float(detection.confidence)}
 
 
 def _now_iso() -> str:

@@ -21,7 +21,7 @@ struct HomeView: View {
                                 }
                                 .contextMenu {
                                     Button("Live Search", systemImage: "arkit") {
-                                        coordinator.presentImmersive(.liveSearch(roomID: room.id))
+                                        coordinator.presentImmersive(.liveSearch(roomID: room.id, target: nil))
                                     }
                                     Button("Query", systemImage: "text.magnifyingglass") {
                                         coordinator.presentSheet(.queryConsole(roomID: room.id))

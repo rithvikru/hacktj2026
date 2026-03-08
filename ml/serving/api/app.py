@@ -50,15 +50,27 @@ MAX_MULTIPART_FILES = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FILES", "5000"))
 MAX_MULTIPART_FIELDS = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FIELDS", "64"))
 SCAN_LIVE_DEFAULT_LABELS = [
     "phone",
+    "laptop",
     "airpods case",
     "wallet",
     "keys",
     "glasses",
     "charger",
     "tv remote",
-    "spoon",
+    "backpack",
+    "bag",
+    "water bottle",
     "bottle",
     "can",
+    "plate",
+    "box",
+    "tissue box",
+    "paper",
+    "notebook",
+    "clipboard",
+    "pen",
+    "shoe",
+    "tv",
 ]
 
 # --- Request / Response models ---
@@ -144,6 +156,7 @@ class SemanticSceneResponseDTO(APIDTOModel):
 class RouteRequestDTO(APIDTOModel):
     start_world_transform16: list[float] = Field(min_length=16, max_length=16)
     target_world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
+    target_object_id: str | None = None
     target_label: str | None = None
     grid_resolution_m: float = 0.20
     obstacle_inflation_radius_m: float = 0.25
@@ -398,6 +411,7 @@ def route_room(room_id: str, request: RouteRequestDTO) -> RouteResponseDTO:
     route = plan_route(
         room=room,
         start_world_transform16=request.start_world_transform16,
+        target_object_id=request.target_object_id,
         target_world_transform16=request.target_world_transform16,
         target_label=request.target_label,
         grid_resolution_m=request.grid_resolution_m,
