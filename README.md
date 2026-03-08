@@ -3,6 +3,7 @@
 Read this first:
 
 - `docs/current-system-overview.md`
+- `docs/experimentation-log.md`
 
 Source-of-truth implementation spec:
 
