@@ -1,14 +1,13 @@
 import SwiftUI
 import RealityKit
 import ARKit
-import SwiftData
 
 struct LiveSearchView: View {
     let roomID: UUID?
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(SpatialSessionManager.self) private var sessionManager
     @Environment(BackendClient.self) private var backendClient
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel = LiveSearchViewModel()
     @State private var relocMonitor = RelocalizationMonitor()
 
@@ -101,7 +100,7 @@ struct LiveSearchView: View {
                         await viewModel.executeSearch(
                             query: query,
                             roomID: roomID,
-                            modelContext: modelContext,
+                            roomStore: roomStore,
                             backendClient: backendClient
                         )
                     }

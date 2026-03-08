@@ -1,16 +1,16 @@
-import SwiftData
+import Observation
 import Foundation
 
-@Model
-final class SceneEdge {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class SceneEdge: Identifiable {
+    var id: UUID
     var roomID: UUID
     var sourceNodeID: UUID
     var targetNodeID: UUID
     var edgeTypeRaw: String
     var weight: Double?
 
-    @Transient var edgeType: SceneEdgeType {
+    var edgeType: SceneEdgeType {
         get { SceneEdgeType(rawValue: edgeTypeRaw) ?? .near }
         set { edgeTypeRaw = newValue.rawValue }
     }

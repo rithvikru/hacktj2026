@@ -1,11 +1,10 @@
 import SwiftUI
 import SceneKit
-import SwiftData
 
 struct RoomTwinView: View {
     let roomID: UUID
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel: RoomTwinViewModel
     @State private var projectedPositions: [UUID: CGPoint] = [:]
 
@@ -71,7 +70,7 @@ struct RoomTwinView: View {
             }
         }
         .task {
-            viewModel.loadRoom(modelContext: modelContext)
+            viewModel.loadRoom(roomStore: roomStore)
         }
     }
 }

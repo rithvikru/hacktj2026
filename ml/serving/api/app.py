@@ -89,6 +89,9 @@ class WearableFrameEventRequest(APIDTOModel):
 class WearableFrameBatchRequest(APIDTOModel):
     events: list[WearableFrameEventRequest] = Field(default_factory=list)
 
+class WearableSessionStatusUpdateRequest(APIDTOModel):
+    status: str
+
 class SceneGraphNodeDTO(APIDTOModel):
     id: str
     node_type: str
@@ -182,6 +185,28 @@ def create_wearable_session(request: WearableSessionCreateRequest):
         "homeID": session.home_id,
         "deviceName": session.device_name,
         "status": session.status,
+        "samplingFps": session.sampling_fps,
+        "frameCount": len(session.frame_events),
+        "updatedAt": session.updated_at,
+    }
+
+@app.get("/wearables/sessions")
+def list_wearable_sessions(home_id: str | None = None):
+    sessions = WearableStore().list_sessions(home_id=home_id)
+    return {
+        "sessions": [
+            {
+                "sessionID": session.session_id,
+                "homeID": session.home_id,
+                "deviceName": session.device_name,
+                "source": session.source,
+                "status": session.status,
+                "samplingFps": session.sampling_fps,
+                "frameCount": len(session.frame_events),
+                "updatedAt": session.updated_at,
+            }
+            for session in sessions
+        ]
     }
 
 @app.get("/wearables/sessions/{session_id}")
@@ -197,19 +222,27 @@ def get_wearable_session(session_id: str):
         "status": session.status,
         "samplingFps": session.sampling_fps,
         "frameCount": len(session.frame_events),
+        "storagePath": str(WearableStore().frames_directory(session.session_id)),
+        "lastFrameID": session.frame_events[-1].frame_id if session.frame_events else None,
+        "lastFrameTimestamp": session.frame_events[-1].timestamp if session.frame_events else None,
         "updatedAt": session.updated_at,
     }
 
 @app.post("/wearables/sessions/{session_id}/frames")
 def ingest_wearable_frames(session_id: str, request: WearableFrameBatchRequest):
-    session = WearableStore().get(session_id)
+    store = WearableStore()
+    session = store.get(session_id)
     if session is None:
         raise HTTPException(404, "Wearable session not found")
 
-    frames_dir = Path("data/wearables") / session_id / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
+    frames_dir = store.frames_directory(session_id)
     parsed_events: list[WearableFrameEvent] = []
+    accepted_frame_ids: set[str] = set()
+    existing_frame_ids = {frame.frame_id for frame in session.frame_events}
     for event in request.events:
+        if event.frame_id in accepted_frame_ids:
+            continue
+        accepted_frame_ids.add(event.frame_id)
         image_path = None
         if event.image_jpeg_base64:
             image_bytes = base64.b64decode(event.image_jpeg_base64)
@@ -233,11 +266,28 @@ def ingest_wearable_frames(session_id: str, request: WearableFrameBatchRequest):
             )
         )
 
-    updated = WearableStore().append_frames(session_id, parsed_events)
+    updated = store.append_frames(session_id, parsed_events)
+    new_frame_ids = {frame.frame_id for frame in parsed_events}
     return {
         "sessionID": session_id,
         "status": updated.status if updated else "missing",
         "accepted": len(parsed_events),
+        "newFrames": len(new_frame_ids - existing_frame_ids),
+        "duplicateFrames": len(new_frame_ids & existing_frame_ids),
+        "frameCount": len(updated.frame_events) if updated else 0,
+        "updatedAt": updated.updated_at if updated else None,
+    }
+
+@app.post("/wearables/sessions/{session_id}/status")
+def update_wearable_session_status(session_id: str, request: WearableSessionStatusUpdateRequest):
+    session = WearableStore().update_status(session_id, request.status)
+    if session is None:
+        raise HTTPException(404, "Wearable session not found")
+    return {
+        "sessionID": session.session_id,
+        "status": session.status,
+        "frameCount": len(session.frame_events),
+        "updatedAt": session.updated_at,
     }
 
 @app.post("/homes/{home_id}/rooms")

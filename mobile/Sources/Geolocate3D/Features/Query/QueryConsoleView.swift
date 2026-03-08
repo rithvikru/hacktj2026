@@ -2,7 +2,7 @@ import SwiftUI
 
 struct QueryConsoleView: View {
     let roomID: UUID?
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @Environment(BackendClient.self) private var backendClient
     @State private var viewModel = QueryViewModel()
     @State private var queryText = ""
@@ -117,7 +117,7 @@ struct QueryConsoleView: View {
             await viewModel.execute(
                 query: text,
                 roomID: roomID,
-                modelContext: modelContext,
+                roomStore: roomStore,
                 backendClient: backendClient
             )
         }

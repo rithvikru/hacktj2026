@@ -1,6 +1,5 @@
 import Foundation
 import simd
-import SwiftData
 
 struct LocalObservationSearchResult {
     let result: SearchResult
@@ -10,8 +9,8 @@ struct LocalObservationSearchResult {
 struct LocalObservationExecutor {
 
     @MainActor
-    func findObject(label: String, roomID: UUID?, rawQuery: String, modelContext: ModelContext) -> LocalObservationSearchResult {
-        let observations = fetchObservations(roomID: roomID, modelContext: modelContext)
+    func findObject(label: String, roomID: UUID?, rawQuery: String, roomStore: RoomStore) -> LocalObservationSearchResult {
+        let observations = fetchObservations(roomID: roomID, roomStore: roomStore)
         let matches = matchingObservations(for: label, in: observations)
 
         guard let topMatch = matches.first else {
@@ -36,15 +35,15 @@ struct LocalObservationExecutor {
             placeID: nil,
             recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
             memoryFreshness: memoryFreshness(for: topMatch.observedAt),
-            routeHint: topMatch.room?.name.map { "Head to \($0)." }
+            routeHint: topMatch.room.map { "Head to \($0.name)." }
         )
 
         return .init(result: result, observations: Array(matches.prefix(5)))
     }
 
     @MainActor
-    func listObjects(category: String?, roomID: UUID?, rawQuery: String, modelContext: ModelContext) -> LocalObservationSearchResult {
-        let observations = fetchObservations(roomID: roomID, modelContext: modelContext)
+    func listObjects(category: String?, roomID: UUID?, rawQuery: String, roomStore: RoomStore) -> LocalObservationSearchResult {
+        let observations = fetchObservations(roomID: roomID, roomStore: roomStore)
         let matches = category.map { matchingObservations(for: $0, in: observations) } ?? observations
 
         guard !matches.isEmpty else {
@@ -75,21 +74,21 @@ struct LocalObservationExecutor {
             placeID: nil,
             recencySeconds: matches.first.map { Date().timeIntervalSince($0.observedAt) },
             memoryFreshness: matches.first.map { memoryFreshness(for: $0.observedAt) },
-            routeHint: matches.first?.room?.name.map { "Start in \($0)." }
+            routeHint: matches.first?.room.map { "Start in \($0.name)." }
         )
 
         return .init(result: result, observations: Array(matches.prefix(5)))
     }
 
     @MainActor
-    func describeLocation(label: String, roomID: UUID?, rawQuery: String, modelContext: ModelContext) -> LocalObservationSearchResult {
-        findObject(label: label, roomID: roomID, rawQuery: rawQuery, modelContext: modelContext)
+    func describeLocation(label: String, roomID: UUID?, rawQuery: String, roomStore: RoomStore) -> LocalObservationSearchResult {
+        findObject(label: label, roomID: roomID, rawQuery: rawQuery, roomStore: roomStore)
     }
 
     @MainActor
     func spatialRelation(subject: String, relation: String, reference: String,
-                         roomID: UUID?, rawQuery: String, modelContext: ModelContext) -> LocalObservationSearchResult {
-        let observations = fetchObservations(roomID: roomID, modelContext: modelContext)
+                         roomID: UUID?, rawQuery: String, roomStore: RoomStore) -> LocalObservationSearchResult {
+        let observations = fetchObservations(roomID: roomID, roomStore: roomStore)
         let subjectMatches = matchingObservations(for: subject, in: observations)
         let referenceMatches = matchingObservations(for: reference, in: observations)
 
@@ -126,15 +125,15 @@ struct LocalObservationExecutor {
             placeID: nil,
             recencySeconds: Date().timeIntervalSince(subjectObservation.observedAt),
             memoryFreshness: memoryFreshness(for: subjectObservation.observedAt),
-            routeHint: subjectObservation.room?.name.map { "Head to \($0)." }
+            routeHint: subjectObservation.room.map { "Head to \($0.name)." }
         )
 
         return .init(result: result, observations: [subjectObservation, referenceObservation])
     }
 
     @MainActor
-    func freeformSearch(text: String, roomID: UUID?, rawQuery: String, modelContext: ModelContext) -> LocalObservationSearchResult {
-        let observations = fetchObservations(roomID: roomID, modelContext: modelContext)
+    func freeformSearch(text: String, roomID: UUID?, rawQuery: String, roomStore: RoomStore) -> LocalObservationSearchResult {
+        let observations = fetchObservations(roomID: roomID, roomStore: roomStore)
         let matches = matchingObservations(for: text, in: observations)
         if let topMatch = matches.first {
             let result = SearchResult(
@@ -151,7 +150,7 @@ struct LocalObservationExecutor {
                 placeID: nil,
                 recencySeconds: Date().timeIntervalSince(topMatch.observedAt),
                 memoryFreshness: memoryFreshness(for: topMatch.observedAt),
-                routeHint: topMatch.room?.name.map { "Head to \($0)." }
+                routeHint: topMatch.room.map { "Head to \($0.name)." }
             )
             return .init(result: result, observations: Array(matches.prefix(5)))
         }
@@ -163,19 +162,14 @@ struct LocalObservationExecutor {
     }
 
     @MainActor
-    private func fetchObservations(roomID: UUID?, modelContext: ModelContext) -> [ObjectObservation] {
+    private func fetchObservations(roomID: UUID?, roomStore: RoomStore) -> [ObjectObservation] {
         if let roomID {
-            let descriptor = FetchDescriptor<ObjectObservation>(
-                predicate: #Predicate { $0.room?.id == roomID },
-                sortBy: [SortDescriptor(\.observedAt, order: .reverse)]
-            )
-            return (try? modelContext.fetch(descriptor)) ?? []
+            guard let room = try? roomStore.fetchRoom(id: roomID) else { return [] }
+            return room.observations.sorted { $0.observedAt > $1.observedAt }
         }
 
-        let descriptor = FetchDescriptor<ObjectObservation>(
-            sortBy: [SortDescriptor(\.observedAt, order: .reverse)]
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        let allRooms = (try? roomStore.fetchAllRooms()) ?? []
+        return allRooms.flatMap(\.observations).sorted { $0.observedAt > $1.observedAt }
     }
 
     private func matchingObservations(for query: String, in observations: [ObjectObservation]) -> [ObjectObservation] {

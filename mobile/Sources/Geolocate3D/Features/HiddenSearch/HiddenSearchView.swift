@@ -1,9 +1,8 @@
 import SwiftUI
-import SwiftData
 
 struct HiddenSearchView: View {
     let roomID: UUID
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel: HiddenSearchViewModel
     @State private var selectedHypothesis: ObjectHypothesis?
 
@@ -80,7 +79,7 @@ struct HiddenSearchView: View {
         .navigationTitle("Hidden Search")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            viewModel.loadHypotheses(modelContext: modelContext)
+            viewModel.loadHypotheses(roomStore: roomStore)
         }
     }
 }

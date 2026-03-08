@@ -4,24 +4,49 @@ import Observation
 @Observable
 @MainActor
 final class WearableStreamSessionManager {
+    var bridgeMode: WearableBridgeMode
     var registrationState: WearableRegistrationState = .unconfigured
     var streamState: WearableStreamState = .idle
     var activeSessionID: String?
     var activeHomeID: String?
     var acceptedFrameCount = 0
+    var localPersistedFrameCount = 0
+    var backendFrameCount = 0
+    var latestSessionStoragePath: String?
+    var latestBackendSessionStatus: String?
     var lastErrorMessage: String?
 
-    private let bridge: WearablesBridge
+    private var bridge: WearablesBridge
     private let persistence = WearablePersistenceService()
     private var sampler = WearableFrameSampler(targetFPS: 1.0)
     private weak var backendClient: BackendClient?
 
-    init(bridge: WearablesBridge = MetaWearablesBridge()) {
-        self.bridge = bridge
+    init(bridgeMode: WearableBridgeMode = .meta) {
+        self.bridgeMode = bridgeMode
+        self.bridge = Self.makeBridge(for: bridgeMode)
     }
 
     func attachBackendClient(_ backendClient: BackendClient) {
         self.backendClient = backendClient
+    }
+
+    func setBridgeMode(_ mode: WearableBridgeMode) {
+        guard mode != bridgeMode else { return }
+        guard !isStreamingActive else {
+            lastErrorMessage = "Stop streaming before switching wearable mode."
+            return
+        }
+        bridgeMode = mode
+        bridge = Self.makeBridge(for: mode)
+        registrationState = .unconfigured
+        streamState = .idle
+        activeSessionID = nil
+        acceptedFrameCount = 0
+        localPersistedFrameCount = 0
+        backendFrameCount = 0
+        latestSessionStoragePath = nil
+        latestBackendSessionStatus = nil
+        lastErrorMessage = nil
     }
 
     func configureIfNeeded() {
@@ -30,18 +55,20 @@ final class WearableStreamSessionManager {
             try bridge.configure()
             registrationState = bridge.registrationState
         } catch {
-            registrationState = .failed(error.localizedDescription)
-            lastErrorMessage = error.localizedDescription
+            let detail = "\(String(describing: error)) | \(error.localizedDescription)"
+            registrationState = .failed(detail)
+            lastErrorMessage = detail
         }
     }
 
-    func beginRegistration() {
+    func beginRegistration() async {
         do {
-            try bridge.beginRegistration()
+            try await bridge.beginRegistration()
             registrationState = bridge.registrationState
         } catch {
-            registrationState = .failed(error.localizedDescription)
-            lastErrorMessage = error.localizedDescription
+            let detail = "\(String(describing: error)) | \(error.localizedDescription)"
+            registrationState = .failed(detail)
+            lastErrorMessage = detail
         }
     }
 
@@ -60,6 +87,7 @@ final class WearableStreamSessionManager {
             lastErrorMessage = "Backend client is not attached."
             return
         }
+        lastErrorMessage = nil
 
         configureIfNeeded()
         if case .failed(let message) = registrationState {
@@ -68,14 +96,24 @@ final class WearableStreamSessionManager {
         }
 
         do {
-            let sessionID = try await backendClient.createWearableSession(
+            let session = try await backendClient.createWearableSession(
                 homeID: homeID,
                 deviceName: "Ray-Ban Meta",
                 source: "rayban_meta",
                 samplingFPS: sampler.targetFPS
             )
-            activeSessionID = sessionID
+            activeSessionID = session.sessionID
+            let summary = try persistence.initializeSessionSummary(
+                sessionID: session.sessionID,
+                homeID: homeID,
+                deviceName: session.deviceName ?? "Ray-Ban Meta"
+            )
             activeHomeID = homeID
+            acceptedFrameCount = session.frameCount
+            backendFrameCount = session.frameCount
+            localPersistedFrameCount = summary.localFrameCount
+            latestSessionStoragePath = summary.sessionDirectoryPath
+            latestBackendSessionStatus = session.status
             try await bridge.startStreaming(
                 onFrame: { [weak self] frame in
                     Task { @MainActor in
@@ -89,6 +127,9 @@ final class WearableStreamSessionManager {
                 }
             )
         } catch {
+            if let sessionID = activeSessionID {
+                _ = try? await backendClient.updateWearableSessionStatus(sessionID: sessionID, status: "failed")
+            }
             streamState = .failed(error.localizedDescription)
             lastErrorMessage = error.localizedDescription
         }
@@ -96,7 +137,33 @@ final class WearableStreamSessionManager {
 
     func stopStreaming() async {
         await bridge.stopStreaming()
+        if let backendClient, let sessionID = activeSessionID {
+            if let response = try? await backendClient.updateWearableSessionStatus(sessionID: sessionID, status: "stopped") {
+                latestBackendSessionStatus = response.status
+                backendFrameCount = response.frameCount
+                acceptedFrameCount = response.frameCount
+            }
+        }
         streamState = .stopped
+    }
+
+    func refreshActiveSession() async {
+        guard let backendClient, let sessionID = activeSessionID else { return }
+        do {
+            let session = try await backendClient.fetchWearableSession(sessionID: sessionID)
+            backendFrameCount = session.frameCount
+            acceptedFrameCount = session.frameCount
+            latestBackendSessionStatus = session.status
+            if let summary = try? persistence.syncBackendFrameCount(
+                sessionID: sessionID,
+                backendFrameCount: session.frameCount
+            ) {
+                localPersistedFrameCount = summary.localFrameCount
+                latestSessionStoragePath = summary.sessionDirectoryPath
+            }
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
     }
 
     private func handleCapturedFrame(_ frame: WearableCapturedFrame, forcedPlaceHint: String?) async {
@@ -105,6 +172,13 @@ final class WearableStreamSessionManager {
 
         do {
             let persisted = try persistence.saveFrameImage(frame.image, sessionID: sessionID, frameID: frame.id)
+            let localSummary = try persistence.recordFrame(
+                sessionID: sessionID,
+                frameID: frame.id,
+                timestamp: frame.timestamp
+            )
+            localPersistedFrameCount = localSummary.localFrameCount
+            latestSessionStoragePath = localSummary.sessionDirectoryPath
             let upload = WearableFrameUpload(
                 frameID: frame.id.uuidString,
                 timestamp: ISO8601DateFormatter().string(from: frame.timestamp),
@@ -119,14 +193,43 @@ final class WearableStreamSessionManager {
                     "capture_source": "rayban_meta",
                 ]
             )
-            try await backendClient.uploadWearableFrames(sessionID: sessionID, frames: [upload])
-            acceptedFrameCount += 1
+            let response = try await backendClient.uploadWearableFrames(sessionID: sessionID, frames: [upload])
+            acceptedFrameCount = response.frameCount
+            backendFrameCount = response.frameCount
+            latestBackendSessionStatus = response.status
+            if let summary = try? persistence.syncBackendFrameCount(
+                sessionID: sessionID,
+                backendFrameCount: response.frameCount
+            ) {
+                localPersistedFrameCount = summary.localFrameCount
+            }
             if acceptedFrameCount % 5 == 0 {
                 _ = try await backendClient.rebuildTopology(homeID: homeID)
             }
         } catch {
+            if let sessionID = activeSessionID {
+                _ = try? await backendClient.updateWearableSessionStatus(sessionID: sessionID, status: "failed")
+            }
             lastErrorMessage = error.localizedDescription
             streamState = .failed(error.localizedDescription)
+        }
+    }
+
+    private var isStreamingActive: Bool {
+        switch streamState {
+        case .connecting, .streaming, .degraded, .reconnecting, .paused:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func makeBridge(for mode: WearableBridgeMode) -> WearablesBridge {
+        switch mode {
+        case .meta:
+            return MetaWearablesBridge()
+        case .simulated:
+            return SimulatedWearablesBridge()
         }
     }
 }

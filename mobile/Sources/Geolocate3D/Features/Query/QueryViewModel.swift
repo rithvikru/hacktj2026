@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 struct QueryHistoryEntry: Identifiable {
     let id: UUID
@@ -37,7 +36,7 @@ final class QueryViewModel {
         }
     }
 
-    func execute(query: String, roomID: UUID?, modelContext: ModelContext, backendClient: BackendClient) async {
+    func execute(query: String, roomID: UUID?, roomStore: RoomStore, backendClient: BackendClient) async {
         guard !query.isEmpty else { return }
         isProcessing = true
 
@@ -46,7 +45,7 @@ final class QueryViewModel {
         let execution = await searchPlanner.execute(
             intent: intent,
             roomID: roomID,
-            modelContext: modelContext,
+            roomStore: roomStore,
             backendClient: backendClient
         )
         let result = execution.result

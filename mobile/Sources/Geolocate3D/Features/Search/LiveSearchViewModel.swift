@@ -3,7 +3,6 @@ import Observation
 import RealityKit
 import ARKit
 import simd
-import SwiftData
 
 struct ActiveObservation: Identifiable {
     let id: UUID
@@ -113,7 +112,7 @@ final class LiveSearchViewModel {
     func executeSearch(
         query: String,
         roomID: UUID?,
-        modelContext: ModelContext,
+        roomStore: RoomStore,
         backendClient: BackendClient
     ) async {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -125,7 +124,7 @@ final class LiveSearchViewModel {
         let execution = await searchPlanner.execute(
             intent: intent,
             roomID: roomID,
-            modelContext: modelContext,
+            roomStore: roomStore,
             backendClient: backendClient
         )
         currentResult = execution.result

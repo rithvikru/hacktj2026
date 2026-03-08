@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 struct SearchExecutionResult {
     let result: SearchResult
@@ -37,20 +36,20 @@ struct SearchPlanner {
     func execute(
         intent: QueryIntent,
         roomID: UUID?,
-        modelContext: ModelContext,
+        roomStore: RoomStore,
         backendClient: BackendClient? = nil
     ) async -> SearchExecutionResult {
         let plan = Self.plan(intent: intent, roomID: roomID)
 
         switch plan.executorType {
         case .localObservation:
-            return await executeFindObject(intent: intent, roomID: roomID, modelContext: modelContext, backendClient: backendClient)
+            return await executeFindObject(intent: intent, roomID: roomID, roomStore: roomStore, backendClient: backendClient)
         case .sceneGraph:
-            return executeSceneGraph(intent: intent, roomID: roomID, modelContext: modelContext)
+            return executeSceneGraph(intent: intent, roomID: roomID, roomStore: roomStore)
         case .backend:
-            return await executeBackend(intent: intent, roomID: roomID, modelContext: modelContext, backendClient: backendClient)
+            return await executeBackend(intent: intent, roomID: roomID, roomStore: roomStore, backendClient: backendClient)
         case .hiddenInference:
-            return await executeFindObject(intent: intent, roomID: roomID, modelContext: modelContext, backendClient: backendClient)
+            return await executeFindObject(intent: intent, roomID: roomID, roomStore: roomStore, backendClient: backendClient)
         }
     }
 
@@ -58,7 +57,7 @@ struct SearchPlanner {
     private func executeFindObject(
         intent: QueryIntent,
         roomID: UUID?,
-        modelContext: ModelContext,
+        roomStore: RoomStore,
         backendClient: BackendClient?
     ) async -> SearchExecutionResult {
         switch intent.type {
@@ -67,7 +66,7 @@ struct SearchPlanner {
                 label: label,
                 roomID: roomID,
                 rawQuery: intent.rawQuery,
-                modelContext: modelContext
+                roomStore: roomStore
             )
             if localResult.result.resultType != .noResult {
                 return SearchExecutionResult(
@@ -88,7 +87,7 @@ struct SearchPlanner {
                 category: category,
                 roomID: roomID,
                 rawQuery: intent.rawQuery,
-                modelContext: modelContext
+                roomStore: roomStore
             )
             return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
         case .describeLocation(let label):
@@ -96,7 +95,7 @@ struct SearchPlanner {
                 label: label,
                 roomID: roomID,
                 rawQuery: intent.rawQuery,
-                modelContext: modelContext
+                roomStore: roomStore
             )
             if localResult.result.resultType != .noResult {
                 return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
@@ -109,17 +108,17 @@ struct SearchPlanner {
                 backendClient: backendClient
             )
         default:
-            return await executeBackend(intent: intent, roomID: roomID, modelContext: modelContext, backendClient: backendClient)
+            return await executeBackend(intent: intent, roomID: roomID, roomStore: roomStore, backendClient: backendClient)
         }
     }
 
     @MainActor
-    private func executeSceneGraph(intent: QueryIntent, roomID: UUID?, modelContext: ModelContext) -> SearchExecutionResult {
+    private func executeSceneGraph(intent: QueryIntent, roomID: UUID?, roomStore: RoomStore) -> SearchExecutionResult {
         switch intent.type {
         case .spatialRelation(let subject, let relation, let reference):
             let localResult = localExecutor.spatialRelation(
                 subject: subject, relation: relation, reference: reference,
-                roomID: roomID, rawQuery: intent.rawQuery, modelContext: modelContext
+                roomID: roomID, rawQuery: intent.rawQuery, roomStore: roomStore
             )
             return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
         default:
@@ -147,7 +146,7 @@ struct SearchPlanner {
     private func executeBackend(
         intent: QueryIntent,
         roomID: UUID?,
-        modelContext: ModelContext,
+        roomStore: RoomStore,
         backendClient: BackendClient?
     ) async -> SearchExecutionResult {
         switch intent.type {
@@ -156,7 +155,7 @@ struct SearchPlanner {
                 text: text,
                 roomID: roomID,
                 rawQuery: intent.rawQuery,
-                modelContext: modelContext
+                roomStore: roomStore
             )
             if localResult.result.resultType != .noResult {
                 return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
@@ -169,7 +168,7 @@ struct SearchPlanner {
                 backendClient: backendClient
             )
         case .findObject, .listObjects, .describeLocation, .spatialRelation:
-            return await executeFindObject(intent: intent, roomID: roomID, modelContext: modelContext, backendClient: backendClient)
+            return await executeFindObject(intent: intent, roomID: roomID, roomStore: roomStore, backendClient: backendClient)
         }
     }
 

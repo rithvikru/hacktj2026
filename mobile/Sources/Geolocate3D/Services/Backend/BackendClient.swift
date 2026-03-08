@@ -3,17 +3,23 @@ import Foundation
 @Observable
 @MainActor
 final class BackendClient {
+    static let defaultBaseURLString = "http://localhost:8000"
+
     var baseURL: URL
     var isConnected: Bool = false
 
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    init(baseURL: URL = URL(string: "http://localhost:8000")!) {
+    init(baseURL: URL = URL(string: BackendClient.defaultBaseURLString)!) {
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         self.session = URLSession(configuration: config)
+    }
+
+    func updateBaseURL(_ url: URL) {
+        baseURL = url
     }
 
     func createWearableSession(
@@ -21,7 +27,7 @@ final class BackendClient {
         deviceName: String,
         source: String,
         samplingFPS: Double
-    ) async throws -> String {
+    ) async throws -> WearableSessionStatusResponse {
         let url = baseURL.appendingPathComponent("wearables/sessions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -35,18 +41,38 @@ final class BackendClient {
             ]
         )
 
-        let (data, _) = try await session.data(for: request)
-        let response = try decoder.decode(CreateWearableSessionResponse.self, from: data)
-        return response.sessionID
+        let (data, response) = try await session.data(for: request)
+        try ensureSuccessfulResponse(response, data: data)
+        return try decoder.decode(WearableSessionStatusResponse.self, from: data)
     }
 
-    func uploadWearableFrames(sessionID: String, frames: [WearableFrameUpload]) async throws {
+    func uploadWearableFrames(sessionID: String, frames: [WearableFrameUpload]) async throws -> WearableFrameUploadResponse {
         let url = baseURL.appendingPathComponent("wearables/sessions/\(sessionID)/frames")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(WearableFrameBatchRequest(events: frames))
-        let (_, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try ensureSuccessfulResponse(response, data: data)
+        return try decoder.decode(WearableFrameUploadResponse.self, from: data)
+    }
+
+    func fetchWearableSession(sessionID: String) async throws -> WearableSessionStatusResponse {
+        let url = baseURL.appendingPathComponent("wearables/sessions/\(sessionID)")
+        let (data, response) = try await session.data(from: url)
+        try ensureSuccessfulResponse(response, data: data)
+        return try decoder.decode(WearableSessionStatusResponse.self, from: data)
+    }
+
+    func updateWearableSessionStatus(sessionID: String, status: String) async throws -> WearableSessionStatusResponse {
+        let url = baseURL.appendingPathComponent("wearables/sessions/\(sessionID)/status")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["status": status])
+        let (data, response) = try await session.data(for: request)
+        try ensureSuccessfulResponse(response, data: data)
+        return try decoder.decode(WearableSessionStatusResponse.self, from: data)
     }
 
     func rebuildTopology(homeID: String) async throws -> HomeTopologyResponse {
@@ -194,6 +220,14 @@ final class BackendClient {
             isConnected = false
         }
     }
+
+    private func ensureSuccessfulResponse(_ response: URLResponse, data: Data) throws {
+        guard let httpResponse = response as? HTTPURLResponse else { return }
+        guard (200 ..< 300).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+            throw BackendClientError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
+    }
 }
 
 private struct CreateRoomResponse: Decodable {
@@ -236,25 +270,19 @@ private struct CreateHomeResponse: Decodable {
     }
 }
 
-private struct CreateWearableSessionResponse: Decodable {
-    let sessionID: String
-
-    private enum CodingKeys: String, CodingKey {
-        case sessionID
-        case session_id
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        sessionID =
-            try container.decodeIfPresent(String.self, forKey: .sessionID) ??
-            (try container.decodeIfPresent(String.self, forKey: .session_id)) ??
-            ""
-    }
-}
-
 private struct ReconstructionStatusResponse: Decodable {
     let status: String
+}
+
+private enum BackendClientError: LocalizedError {
+    case requestFailed(statusCode: Int, message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .requestFailed(let statusCode, let message):
+            return "Backend request failed (\(statusCode)): \(message)"
+        }
+    }
 }
 
 struct BackendSearchResult: Decodable, Identifiable {
@@ -347,8 +375,8 @@ struct BackendSearchResult: Decodable, Identifiable {
             (try container.decodeIfPresent(Double.self, forKey: .score)) ??
             0
         confidenceState =
-            (try container.decodeIfPresent(SearchConfidenceState.self, forKey: .confidenceState)) ??
-            (try container.decodeIfPresent(SearchConfidenceState.self, forKey: .confidence_state)) ??
+            (try? container.decodeIfPresent(SearchConfidenceState.self, forKey: .confidenceState)) ??
+            (try? container.decodeIfPresent(SearchConfidenceState.self, forKey: .confidence_state)) ??
             (resultType == "stale_memory" ? .staleMemory : (resultType == "last_seen" ? .lastSeen : .liveSeen))
         worldTransform =
             try container.decodeIfPresent([Float].self, forKey: .worldTransform) ??
@@ -408,6 +436,128 @@ struct BackendQueryResponse: Decodable {
 
 private struct WearableFrameBatchRequest: Encodable {
     let events: [WearableFrameUpload]
+}
+
+struct WearableFrameUploadResponse: Decodable {
+    let sessionID: String
+    let status: String
+    let accepted: Int
+    let newFrames: Int
+    let duplicateFrames: Int
+    let frameCount: Int
+    let updatedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID
+        case session_id
+        case status
+        case accepted
+        case newFrames
+        case new_frames
+        case duplicateFrames
+        case duplicate_frames
+        case frameCount
+        case frame_count
+        case updatedAt
+        case updated_at
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID =
+            try container.decodeIfPresent(String.self, forKey: .sessionID) ??
+            (try container.decodeIfPresent(String.self, forKey: .session_id)) ??
+            ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        accepted = try container.decodeIfPresent(Int.self, forKey: .accepted) ?? 0
+        newFrames =
+            try container.decodeIfPresent(Int.self, forKey: .newFrames) ??
+            (try container.decodeIfPresent(Int.self, forKey: .new_frames)) ??
+            0
+        duplicateFrames =
+            try container.decodeIfPresent(Int.self, forKey: .duplicateFrames) ??
+            (try container.decodeIfPresent(Int.self, forKey: .duplicate_frames)) ??
+            0
+        frameCount =
+            try container.decodeIfPresent(Int.self, forKey: .frameCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .frame_count)) ??
+            0
+        updatedAt =
+            try container.decodeIfPresent(String.self, forKey: .updatedAt) ??
+            (try container.decodeIfPresent(String.self, forKey: .updated_at))
+    }
+}
+
+struct WearableSessionStatusResponse: Decodable {
+    let sessionID: String
+    let homeID: String?
+    let deviceName: String?
+    let source: String?
+    let status: String
+    let samplingFps: Double?
+    let frameCount: Int
+    let storagePath: String?
+    let lastFrameID: String?
+    let lastFrameTimestamp: String?
+    let updatedAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID
+        case session_id
+        case homeID
+        case home_id
+        case deviceName
+        case device_name
+        case source
+        case status
+        case samplingFps
+        case sampling_fps
+        case frameCount
+        case frame_count
+        case storagePath
+        case storage_path
+        case lastFrameID
+        case last_frame_id
+        case lastFrameTimestamp
+        case last_frame_timestamp
+        case updatedAt
+        case updated_at
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID =
+            try container.decodeIfPresent(String.self, forKey: .sessionID) ??
+            (try container.decodeIfPresent(String.self, forKey: .session_id)) ??
+            ""
+        homeID =
+            try container.decodeIfPresent(String.self, forKey: .homeID) ??
+            (try container.decodeIfPresent(String.self, forKey: .home_id))
+        deviceName =
+            try container.decodeIfPresent(String.self, forKey: .deviceName) ??
+            (try container.decodeIfPresent(String.self, forKey: .device_name))
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        samplingFps =
+            try container.decodeIfPresent(Double.self, forKey: .samplingFps) ??
+            (try container.decodeIfPresent(Double.self, forKey: .sampling_fps))
+        frameCount =
+            try container.decodeIfPresent(Int.self, forKey: .frameCount) ??
+            (try container.decodeIfPresent(Int.self, forKey: .frame_count)) ??
+            0
+        storagePath =
+            try container.decodeIfPresent(String.self, forKey: .storagePath) ??
+            (try container.decodeIfPresent(String.self, forKey: .storage_path))
+        lastFrameID =
+            try container.decodeIfPresent(String.self, forKey: .lastFrameID) ??
+            (try container.decodeIfPresent(String.self, forKey: .last_frame_id))
+        lastFrameTimestamp =
+            try container.decodeIfPresent(String.self, forKey: .lastFrameTimestamp) ??
+            (try container.decodeIfPresent(String.self, forKey: .last_frame_timestamp))
+        updatedAt =
+            try container.decodeIfPresent(String.self, forKey: .updatedAt) ??
+            (try container.decodeIfPresent(String.self, forKey: .updated_at))
+    }
 }
 
 struct HomeTopologyNode: Decodable, Identifiable {

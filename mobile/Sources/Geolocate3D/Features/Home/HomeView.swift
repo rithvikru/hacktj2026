@@ -1,11 +1,13 @@
 import SwiftUI
-import SwiftData
 
 struct HomeView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \RoomRecord.updatedAt, order: .reverse) private var rooms: [RoomRecord]
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel = HomeViewModel()
+
+    private var rooms: [RoomRecord] {
+        (try? roomStore.fetchAllRooms()) ?? []
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -35,7 +37,7 @@ struct HomeView: View {
                                             coordinator.presentSheet(.queryConsole(roomID: room.id))
                                         }
                                         Button("Delete", systemImage: "trash", role: .destructive) {
-                                            viewModel.deleteRoom(room, from: modelContext)
+                                            viewModel.deleteRoom(room, from: roomStore)
                                         }
                                     }
                             }

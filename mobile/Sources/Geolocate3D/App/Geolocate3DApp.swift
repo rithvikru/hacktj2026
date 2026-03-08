@@ -1,18 +1,28 @@
 import SwiftUI
-import SwiftData
 
 @main
 struct Geolocate3DApp: App {
     @State private var coordinator = AppCoordinator()
     @State private var spatialSessionManager = SpatialSessionManager()
-    @State private var backendClient = BackendClient()
-    @State private var wearableStreamManager = WearableStreamSessionManager()
+    @State private var roomStore = RoomStore()
+    @State private var backendClient = BackendClient(
+        baseURL: URL(
+            string: UserDefaults.standard.string(forKey: "backendBaseURL")
+                ?? BackendClient.defaultBaseURLString
+        ) ?? URL(string: BackendClient.defaultBaseURLString)!
+    )
+    @State private var wearableStreamManager = WearableStreamSessionManager(
+        bridgeMode: WearableBridgeMode.fromStoredValue(
+            UserDefaults.standard.string(forKey: "wearableBridgeMode")
+        )
+    )
 
     var body: some Scene {
         WindowGroup {
             RootTabView()
                 .environment(coordinator)
                 .environment(spatialSessionManager)
+                .environment(roomStore)
                 .environment(backendClient)
                 .environment(wearableStreamManager)
                 .preferredColorScheme(.dark)
@@ -26,13 +36,5 @@ struct Geolocate3DApp: App {
                     }
                 }
         }
-        .modelContainer(for: [
-            RoomRecord.self,
-            ObjectObservation.self,
-            ObjectPrototype.self,
-            SceneNode.self,
-            SceneEdge.self,
-            ObjectHypothesis.self
-        ])
     }
 }

@@ -1,4 +1,4 @@
-import SwiftData
+import Observation
 import Foundation
 
 @Observable
@@ -23,12 +23,8 @@ final class RoomTwinViewModel {
         persistence.usdzURL(for: roomID)
     }
 
-    func loadRoom(modelContext: ModelContext) {
-        var descriptor = FetchDescriptor<RoomRecord>(
-            predicate: #Predicate { $0.id == roomID }
-        )
-        descriptor.fetchLimit = 1
-        if let room = try? modelContext.fetch(descriptor).first {
+    func loadRoom(roomStore: RoomStore) {
+        if let room = try? roomStore.fetchRoom(id: roomID) {
             roomName = room.name
             observations = room.observations
         }

@@ -13,6 +13,7 @@ enum WearablesBridgeError: LocalizedError {
     case sdkUnavailable
     case registrationFailed
     case streamUnavailable
+    case cameraPermissionDenied
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ enum WearablesBridgeError: LocalizedError {
             return "Meta wearable registration did not complete successfully."
         case .streamUnavailable:
             return "Meta DAT camera streaming is unavailable."
+        case .cameraPermissionDenied:
+            return "Camera permission on Meta glasses was denied. Grant access in the Meta AI app."
         }
     }
 }
@@ -40,21 +43,43 @@ final class MetaWearablesBridge: WearablesBridge {
 
     func configure() throws {
         #if canImport(MWDATCore)
-        try Wearables.configure()
-        registrationState = .configured
+        do {
+            try Wearables.configure()
+            registrationState = .configured
+            NSLog("[MWDAT] configure() OK")
+        } catch {
+            let msg = "configure: \(String(describing: error))"
+            NSLog("[MWDAT] %@", msg)
+            registrationState = .failed(msg)
+            throw error
+        }
         #else
         registrationState = .failed(WearablesBridgeError.sdkUnavailable.localizedDescription)
         throw WearablesBridgeError.sdkUnavailable
         #endif
     }
 
-    func beginRegistration() throws {
+    func beginRegistration() async throws {
         #if canImport(MWDATCore)
+
+        if case .failed = registrationState {
+            try configure()
+        }
+        if case .unconfigured = registrationState {
+            try configure()
+        }
+
         registrationState = .registering
+        let sdkState = Wearables.shared.registrationState
+        NSLog("[MWDAT] startRegistration — SDK state=%@", String(describing: sdkState))
         do {
-            try Wearables.shared.startRegistration()
+            try await Wearables.shared.startRegistration()
+            registrationState = .registered
+            NSLog("[MWDAT] startRegistration OK")
         } catch {
-            registrationState = .failed(error.localizedDescription)
+            let msg = "register: \(String(describing: error))"
+            NSLog("[MWDAT] %@", msg)
+            registrationState = .failed(msg)
             throw error
         }
         #else
@@ -86,6 +111,17 @@ final class MetaWearablesBridge: WearablesBridge {
         streamState = .connecting
         onStateChange(.connecting)
 
+        let wearables = Wearables.shared
+        let cameraStatus = try await wearables.checkPermissionStatus(.camera)
+        if cameraStatus == .denied {
+            let requested = try await wearables.requestPermission(.camera)
+            if requested == .denied {
+                streamState = .failed(WearablesBridgeError.cameraPermissionDenied.localizedDescription)
+                onStateChange(streamState)
+                throw WearablesBridgeError.cameraPermissionDenied
+            }
+        }
+
         let config = StreamSessionConfig(
             videoCodec: .raw,
             resolution: .low,
@@ -106,21 +142,20 @@ final class MetaWearablesBridge: WearablesBridge {
         stateListeners.append(stateToken)
 
         let frameToken = session.videoFramePublisher.listen { frame in
-            guard let cgImage = frame.makeCGImage() else { return }
-            let image = UIImage(cgImage: cgImage)
+            guard let image = frame.makeUIImage() else { return }
             let captured = WearableCapturedFrame(
                 image: image,
                 placeHint: nil,
                 observedObjects: [],
                 sampleReason: "wearable_stream",
-                width: cgImage.width,
-                height: cgImage.height
+                width: Int(image.size.width),
+                height: Int(image.size.height)
             )
             onFrame(captured)
         }
         frameListeners.append(frameToken)
 
-        try await session.start()
+        await session.start()
         streamState = .streaming
         onStateChange(.streaming)
         #else

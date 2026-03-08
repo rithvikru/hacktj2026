@@ -12,7 +12,7 @@ struct FrameBundleManifest: Codable {
     let auxiliaryAssets: [FrameAuxiliaryAssets]
     let frames: [FrameRecord]
 
-    init(
+    @MainActor init(
         roomID: UUID,
         sessionID: UUID,
         frames: [FrameRecord],
@@ -78,7 +78,7 @@ struct DeviceMetadata: Codable {
     let systemName: String
     let systemVersion: String
 
-    static func current() -> DeviceMetadata {
+    @MainActor static func current() -> DeviceMetadata {
         let device = UIDevice.current
         return DeviceMetadata(
             model: device.model,

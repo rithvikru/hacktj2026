@@ -1,9 +1,8 @@
-import SwiftData
 import SwiftUI
 
 struct ObjectDetailView: View {
     let observationID: UUID
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @Environment(AppCoordinator.self) private var coordinator
     @State private var observation: ObjectObservation?
 
@@ -87,10 +86,12 @@ struct ObjectDetailView: View {
     }
 
     private func loadObservation() {
-        var descriptor = FetchDescriptor<ObjectObservation>(
-            predicate: #Predicate { $0.id == observationID }
-        )
-        descriptor.fetchLimit = 1
-        observation = try? modelContext.fetch(descriptor).first
+        let allRooms = (try? roomStore.fetchAllRooms()) ?? []
+        for room in allRooms {
+            if let obs = room.observations.first(where: { $0.id == observationID }) {
+                observation = obs
+                return
+            }
+        }
     }
 }

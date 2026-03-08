@@ -1,9 +1,8 @@
 import SwiftUI
-import SwiftData
 
 struct ScanCompletionSheet: View {
     let roomID: UUID
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @Environment(\.dismiss) private var dismiss
     @State private var roomName = ""
     @State private var isSaving = false
@@ -75,8 +74,7 @@ struct ScanCompletionSheet: View {
         }
         room.reconstructionStatusRaw = ReconstructionStatus.complete.rawValue
 
-        modelContext.insert(room)
-        try? modelContext.save()
+        roomStore.insertRoom(room)
         dismiss()
     }
 }

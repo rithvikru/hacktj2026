@@ -1,9 +1,9 @@
-import SwiftData
+import Observation
 import Foundation
 
-@Model
-final class SceneNode {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class SceneNode: Identifiable {
+    var id: UUID
     var roomID: UUID
     var nodeTypeRaw: String
     var label: String
@@ -14,7 +14,7 @@ final class SceneNode {
 
     var room: RoomRecord?
 
-    @Transient var nodeType: SceneNodeType {
+    var nodeType: SceneNodeType {
         get { SceneNodeType(rawValue: nodeTypeRaw) ?? .room }
         set { nodeTypeRaw = newValue.rawValue }
     }

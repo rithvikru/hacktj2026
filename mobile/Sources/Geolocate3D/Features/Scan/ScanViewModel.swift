@@ -1,7 +1,6 @@
 import Foundation
-import ARKit
+@preconcurrency import ARKit
 import RoomPlan
-import SwiftData
 import simd
 import UIKit
 
@@ -97,7 +96,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
         }
     }
 
-    func finalizeScan(modelContext: ModelContext) async {
+    func finalizeScan(roomStore: RoomStore) async {
         guard let data = capturedRoomData,
               let roomID = activeRoomID,
               let sessionID = activeSessionID,
@@ -146,11 +145,10 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             try bundleData.write(to: bundleURL, options: [.atomic])
             roomRecord.frameBundlePath = bundleURL.path
 
-            modelContext.insert(roomRecord)
-            persistCapturedRoom(room, roomID: roomID, roomRecord: roomRecord, modelContext: modelContext)
+            roomStore.insertRoom(roomRecord)
+            persistCapturedRoom(room, roomID: roomID, roomRecord: roomRecord)
             roomRecord.reconstructionStatus = .complete
             roomRecord.updatedAt = Date()
-            try modelContext.save()
 
             savedRoomID = roomID
         } catch {
@@ -339,8 +337,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     private func persistCapturedRoom(
         _ room: CapturedRoom,
         roomID: UUID,
-        roomRecord: RoomRecord,
-        modelContext: ModelContext
+        roomRecord: RoomRecord
     ) {
         for object in room.objects {
             let label = String(describing: object.category)
@@ -352,7 +349,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             )
             observation.room = roomRecord
             observation.visibilityStateRaw = VisibilityState.visible.rawValue
-            modelContext.insert(observation)
+            roomRecord.observations.append(observation)
 
             let node = SceneNode(
                 roomID: roomID,
@@ -363,7 +360,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 attributesJSON: #"{"source":"roomplan"}"#
             )
             node.room = roomRecord
-            modelContext.insert(node)
+            roomRecord.sceneNodes.append(node)
         }
 
         for opening in room.openings {
@@ -373,8 +370,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 transform: opening.transform,
                 dimensions: opening.dimensions,
                 roomID: roomID,
-                roomRecord: roomRecord,
-                modelContext: modelContext
+                roomRecord: roomRecord
             )
         }
 
@@ -385,8 +381,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 transform: door.transform,
                 dimensions: door.dimensions,
                 roomID: roomID,
-                roomRecord: roomRecord,
-                modelContext: modelContext
+                roomRecord: roomRecord
             )
         }
 
@@ -397,8 +392,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
                 transform: window.transform,
                 dimensions: window.dimensions,
                 roomID: roomID,
-                roomRecord: roomRecord,
-                modelContext: modelContext
+                roomRecord: roomRecord
             )
         }
     }
@@ -409,8 +403,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
         transform: simd_float4x4,
         dimensions: SIMD3<Float>,
         roomID: UUID,
-        roomRecord: RoomRecord,
-        modelContext: ModelContext
+        roomRecord: RoomRecord
     ) {
         let node = SceneNode(
             roomID: roomID,
@@ -421,7 +414,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             attributesJSON: #"{"source":"roomplan"}"#
         )
         node.room = roomRecord
-        modelContext.insert(node)
+        roomRecord.sceneNodes.append(node)
     }
 
     private func nodeType(for label: String) -> SceneNodeType {

@@ -1,10 +1,9 @@
-import SwiftData
 import SwiftUI
 
 struct ScanResultsView: View {
     let roomID: UUID
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.modelContext) private var modelContext
+    @Environment(RoomStore.self) private var roomStore
     @State private var room: RoomRecord?
 
     var body: some View {
@@ -82,10 +81,6 @@ struct ScanResultsView: View {
     }
 
     private func loadRoom() {
-        var descriptor = FetchDescriptor<RoomRecord>(
-            predicate: #Predicate { $0.id == roomID }
-        )
-        descriptor.fetchLimit = 1
-        room = try? modelContext.fetch(descriptor).first
+        room = try? roomStore.fetchRoom(id: roomID)
     }
 }
