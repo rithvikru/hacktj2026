@@ -1,10 +1,10 @@
-import SwiftData
+import Observation
 import Foundation
 import simd
 
-@Model
-final class ObjectObservation {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class ObjectObservation: Identifiable {
+    var id: UUID
     var label: String
     var sourceRaw: String
     var confidence: Double
@@ -21,15 +21,15 @@ final class ObjectObservation {
     var room: RoomRecord?
     var prototype: ObjectPrototype?
 
-    @Transient var worldTransform: simd_float4x4 {
+    var worldTransform: simd_float4x4 {
         simd_float4x4.fromData(transformData) ?? matrix_identity_float4x4
     }
 
-    @Transient var source: ObservationSource {
+    var source: ObservationSource {
         ObservationSource(rawValue: sourceRaw) ?? .closedSet
     }
 
-    @Transient var confidenceClass: DetectionConfidenceClass {
+    var confidenceClass: DetectionConfidenceClass {
         switch (source, confidence) {
         case (.signal, _): return .signalEstimated
         case (_, 0.8...): return .confirmedHigh
@@ -38,7 +38,7 @@ final class ObjectObservation {
         }
     }
 
-    @Transient var visibilityState: VisibilityState {
+    var visibilityState: VisibilityState {
         VisibilityState(rawValue: visibilityStateRaw) ?? .unknown
     }
 

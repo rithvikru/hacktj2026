@@ -4,6 +4,10 @@
 <dict>
     <key>CFBundleDisplayName</key>
     <string>Geolocate3D</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>arkit</string>
@@ -19,10 +23,52 @@
     <string>Geolocate3D uses the local network for cooperative device search.</string>
     <key>NSNearbyInteractionUsageDescription</key>
     <string>Geolocate3D uses Nearby Interaction for precise object localization.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Geolocate3D connects to Meta Ray-Ban glasses via Bluetooth for hands-free video streaming.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>Geolocate3D connects to Meta Ray-Ban glasses via Bluetooth for hands-free video streaming.</string>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.geolocate3d.app</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>geolocate3d</string>
+            </array>
+        </dict>
+    </array>
+    <key>UISupportedExternalAccessoryProtocols</key>
+    <array>
+        <string>com.meta.ar.wearable</string>
+    </array>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>bluetooth-central</string>
+        <string>external-accessory</string>
+    </array>
+    <key>MWDAT</key>
+    <dict>
+        <key>AppLinkURLScheme</key>
+        <string>geolocate3d</string>
+        <key>MetaAppID</key>
+        <string>1822159831753014</string>
+        <key>ClientToken</key>
+        <string>AR|1822159831753014|eb1a62189cf3d388e3714d476544728e</string>
+        <key>TeamID</key>
+        <string>6SS4P32M6M</string>
+        <key>Analytics</key>
+        <dict>
+            <key>OptOut</key>
+            <true/>
+        </dict>
+    </dict>
     <key>UILaunchScreen</key>
     <dict/>
 </dict>

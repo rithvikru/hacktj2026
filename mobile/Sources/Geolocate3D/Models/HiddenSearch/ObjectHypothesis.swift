@@ -1,9 +1,9 @@
-import SwiftData
+import Observation
 import Foundation
 
-@Model
-final class ObjectHypothesis {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class ObjectHypothesis: Identifiable {
+    var id: UUID
     var queryLabel: String
     var hypothesisTypeRaw: String
     var rank: Int
@@ -14,11 +14,11 @@ final class ObjectHypothesis {
 
     var room: RoomRecord?
 
-    @Transient var hypothesisType: HypothesisType {
+    var hypothesisType: HypothesisType {
         HypothesisType(rawValue: hypothesisTypeRaw) ?? .inferred
     }
 
-    @Transient var confidenceClass: DetectionConfidenceClass {
+    var confidenceClass: DetectionConfidenceClass {
         switch hypothesisType {
         case .cooperative: return .signalEstimated
         case .tagged: return .signalEstimated

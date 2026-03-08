@@ -8,7 +8,7 @@ struct RootTabView: View {
 
         TabView(selection: $nav.selectedTab) {
             HomeStack()
-                .tabItem { Label("Spaces", systemImage: "square.grid.2x2.fill") }
+                .tabItem { Label("Home", systemImage: "eyeglasses") }
                 .tag(0)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
@@ -37,11 +37,11 @@ struct RootTabView: View {
                     .presentationCornerRadius(32)
                     .presentationBackground(.ultraThinMaterial)
             case .scanResults(let roomID):
-                ScanResultsStubView(roomID: roomID)
+                ScanResultsView(roomID: roomID)
                     .presentationDetents([.height(400)])
                     .presentationCornerRadius(32)
             case .objectDetail(let id):
-                ObjectDetailStubView(observationID: id)
+                ObjectDetailView(observationID: id)
                     .presentationDetents([.medium])
             }
         }
@@ -63,7 +63,7 @@ struct HomeStack: View {
                     case .hiddenSearch(let id):
                         HiddenSearchView(roomID: id)
                     case .objectDetail(let id):
-                        ObjectDetailStubView(observationID: id)
+                        ObjectDetailView(observationID: id)
                     }
                 }
         }

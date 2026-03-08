@@ -31,6 +31,7 @@ struct AnnotationPin: View {
         case .lastSeen: return .warningAmber
         case .signalEstimated: return .signalMagenta
         case .likelihoodRanked: return .inferenceViolet
+        case .staleMemory: return .warningAmber.opacity(0.5)
         case .noResult: return .dimLabel
         }
     }

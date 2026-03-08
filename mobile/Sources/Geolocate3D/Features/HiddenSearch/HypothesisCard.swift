@@ -16,17 +16,24 @@ struct HypothesisCard: View {
             }
 
             Text(hypothesis.queryLabel)
-                .font(SpatialFont.headline)
+                .font(SpatialFont.title2)
                 .foregroundStyle(.white)
 
-            Text(hypothesis.reasonCodes.first ?? "")
+            Text("Likely here")
                 .font(SpatialFont.caption)
+                .foregroundStyle(.inferenceViolet)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.inferenceViolet.opacity(0.15), in: Capsule())
+
+            Text(hypothesis.reasonCodes.first ?? "")
+                .font(SpatialFont.subheadline)
                 .foregroundStyle(.dimLabel)
                 .lineLimit(2)
 
             HStack {
                 Text("\(Int(hypothesis.confidence * 100))%")
-                    .font(SpatialFont.dataMedium)
+                    .font(SpatialFont.dataLarge)
                     .foregroundStyle(.inferenceViolet)
                 Spacer()
                 Text(hypothesis.hypothesisType.label)

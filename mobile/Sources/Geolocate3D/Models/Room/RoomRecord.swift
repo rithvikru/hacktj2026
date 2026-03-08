@@ -1,29 +1,24 @@
-import SwiftData
+import Observation
 import Foundation
 import UIKit
 
-@Model
-final class RoomRecord {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class RoomRecord: Identifiable {
+    var id: UUID
     var name: String
     var createdAt: Date
     var updatedAt: Date
     var previewImagePath: String?
     var capturedRoomJSONPath: String?
     var roomUSDZPath: String?
-    @Attribute(.externalStorage) var worldMapData: Data?
+    var worldMapData: Data?
     var frameBundlePath: String?
     var denseAssetPath: String?
     var sceneGraphVersion: Int
     var reconstructionStatusRaw: String
 
-    @Relationship(deleteRule: .cascade, inverse: \ObjectObservation.room)
     var observations: [ObjectObservation] = []
-
-    @Relationship(deleteRule: .cascade, inverse: \SceneNode.room)
     var sceneNodes: [SceneNode] = []
-
-    @Relationship(deleteRule: .cascade, inverse: \ObjectHypothesis.room)
     var hypotheses: [ObjectHypothesis] = []
 
     var reconstructionStatus: ReconstructionStatus {
@@ -31,9 +26,9 @@ final class RoomRecord {
         set { reconstructionStatusRaw = newValue.rawValue }
     }
 
-    @Transient var observationCount: Int { observations.count }
+    var observationCount: Int { observations.count }
 
-    @Transient var previewImage: UIImage? {
+    var previewImage: UIImage? {
         guard let path = previewImagePath else { return nil }
         return UIImage(contentsOfFile: path)
     }

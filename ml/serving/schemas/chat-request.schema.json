@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "ChatMessageDTO": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "system",
+            "user",
+            "assistant",
+            "tool"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "title": "ChatMessageDTO",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "includePlannerContext": {
+      "default": true,
+      "title": "Includeplannercontext",
+      "type": "boolean"
+    },
+    "includeQueryResult": {
+      "default": true,
+      "title": "Includequeryresult",
+      "type": "boolean"
+    },
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/ChatMessageDTO"
+      },
+      "title": "Messages",
+      "type": "array"
+    },
+    "queryText": {
+      "minLength": 1,
+      "title": "Querytext",
+      "type": "string"
+    },
+    "roomId": {
+      "title": "Roomid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "queryText",
+    "roomId"
+  ],
+  "title": "ChatRequestDTO",
+  "type": "object"
+}

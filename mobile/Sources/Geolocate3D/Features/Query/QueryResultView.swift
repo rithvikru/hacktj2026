@@ -32,6 +32,46 @@ struct QueryResultView: View {
                 .font(SpatialFont.body)
                 .foregroundStyle(.dimLabel)
 
+            if let roomName = result.roomName {
+                Label(roomName, systemImage: "house")
+                    .font(SpatialFont.caption)
+                    .foregroundStyle(.white)
+            }
+
+            if let routeHint = result.routeHint {
+                HStack(spacing: 8) {
+                    Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                        .foregroundStyle(.spatialCyan)
+                    Text(routeHint)
+                        .font(SpatialFont.caption)
+                        .foregroundStyle(.spatialCyan)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Color.spatialCyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            HStack(spacing: 10) {
+                Text(result.confidenceState.displayLabel)
+                    .font(SpatialFont.caption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(confidenceStateColor.opacity(0.18), in: Capsule())
+
+                if let freshness = result.memoryFreshness {
+                    Text("Freshness \(Int(freshness * 100))%")
+                        .font(SpatialFont.caption)
+                        .foregroundStyle(.dimLabel)
+                }
+
+                if let recency = result.recencySeconds {
+                    Text(recencyLabel(for: recency))
+                        .font(SpatialFont.caption)
+                        .foregroundStyle(.dimLabel)
+                }
+            }
+
             if !result.evidence.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -61,6 +101,7 @@ struct QueryResultView: View {
         case .lastSeen:         return "Last seen"
         case .signalEstimated:  return "Signal"
         case .likelihoodRanked: return "Likely here"
+        case .staleMemory:      return "Stale"
         case .noResult:         return "Not found"
         }
     }
@@ -71,7 +112,36 @@ struct QueryResultView: View {
         case .lastSeen:         return .warningAmber
         case .signalEstimated:  return .signalMagenta
         case .likelihoodRanked: return .inferenceViolet
+        case .staleMemory:      return .warningAmber
         case .noResult:         return .dimLabel
         }
+    }
+
+    private var confidenceStateColor: Color {
+        switch result.confidenceState {
+        case .liveSeen:
+            return .spatialCyan
+        case .lastSeen:
+            return .warningAmber
+        case .likelyHidden:
+            return .inferenceViolet
+        case .staleMemory:
+            return .warningAmber
+        case .notFound:
+            return .dimLabel
+        }
+    }
+
+    private func recencyLabel(for recency: Double) -> String {
+        if recency < 60 {
+            return "seen just now"
+        }
+        if recency < 3600 {
+            return "seen \(Int(recency / 60))m ago"
+        }
+        if recency < 86400 {
+            return "seen \(Int(recency / 3600))h ago"
+        }
+        return "seen \(Int(recency / 86400))d ago"
     }
 }

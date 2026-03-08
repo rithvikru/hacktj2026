@@ -1,57 +1,150 @@
 import SwiftUI
-import SwiftData
 
 struct HomeView: View {
     @Environment(AppCoordinator.self) private var coordinator
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \RoomRecord.updatedAt, order: .reverse) private var rooms: [RoomRecord]
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel = HomeViewModel()
 
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage("preferredMode") private var preferredMode = ""
+    @State private var skipScan = false
+
+    private var showEmptyState: Bool {
+        roomStore.rooms.isEmpty && !skipScan && preferredMode != "outside"
+    }
+
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .bottom) {
             ScrollView {
-                if rooms.isEmpty {
-                    EmptyStateView()
-                } else {
-                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 20) {
-                        ForEach(rooms) { room in
-                            RoomPreviewCard(room: room)
-                                .onTapGesture {
-                                    coordinator.push(.roomTwin(roomID: room.id))
-                                }
-                                .contextMenu {
-                                    Button("Live Search", systemImage: "arkit") {
+                VStack(spacing: 24) {
+                    if showEmptyState {
+
+                        EmptyStateScanCTA(onScan: {
+                            coordinator.presentImmersive(.scanRoom)
+                        })
+                        .padding(.horizontal, 16)
+                        .padding(.top, 24)
+                    } else {
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Your Spaces")
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 20)
+
+                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 16) {
+                            ForEach(roomStore.rooms) { room in
+                                RoomPreviewCard(
+                                    room: room,
+                                    onSearch: {
                                         coordinator.presentImmersive(.liveSearch(roomID: room.id))
-                                    }
-                                    Button("Query", systemImage: "text.magnifyingglass") {
+                                    },
+                                    onQuery: {
                                         coordinator.presentSheet(.queryConsole(roomID: room.id))
+                                    },
+                                    onTwin: {
+                                        coordinator.push(.roomTwin(roomID: room.id))
+                                    },
+                                    onDelete: {
+                                        viewModel.deleteRoom(room, from: roomStore)
                                     }
-                                    Button("Delete", systemImage: "trash", role: .destructive) {
-                                        viewModel.deleteRoom(room, from: modelContext)
-                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 16)
+
+                        Button {
+                            coordinator.presentImmersive(.scanRoom)
+                        } label: {
+                            Text("Scan another room")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.zinc900, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
                                 }
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                }
-            }
-            .background(Color.spaceBlack)
-            .navigationTitle("Spaces")
+                    .padding(.top, 12)
 
-            Button {
-                coordinator.presentImmersive(.scanRoom)
-            } label: {
-                Image(systemName: "plus.viewfinder")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 64, height: 64)
-                    .background(Color.spatialCyan)
-                    .clipShape(Circle())
-                    .shadow(color: .spatialCyan.opacity(0.4), radius: 20, y: 8)
+                    HomeMapOverviewCard(rooms: Array(rooms))
+                        .padding(.horizontal, 16)
+                }
+
+                UnifiedDeviceCard()
+                    .padding(.horizontal, 16)
             }
-            .padding(.trailing, 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, 40)
+        }
+            .background(Color.spaceBlack)
+            .navigationTitle("Uncover")
+
+            if showEmptyState {
+                HStack {
+                    Button {
+                        hasCompletedOnboarding = false
+                    } label: {
+                        Text("Back")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    Spacer()
+                    Button {
+                        skipScan = true
+                    } label: {
+                        Text("Skip for now")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+            }
+        }
+    }
+
+    private var rooms: [RoomRecord] {
+        (try? roomStore.fetchAllRooms()) ?? []
+    }
+}
+
+private struct EmptyStateScanCTA: View {
+    let onScan: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+                .frame(height: 60)
+
+            VStack(spacing: 12) {
+                Text("Scan a room to start\nfinding things")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+
+                Text("Walk around a room with your camera to build a 3D map. Then search for anything.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+
+            Button(action: onScan) {
+                Text("Start Scanning")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.spatialCyan, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
         }
     }
 }

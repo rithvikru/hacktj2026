@@ -2,6 +2,8 @@ import SwiftUI
 
 struct QueryConsoleView: View {
     let roomID: UUID?
+    @Environment(RoomStore.self) private var roomStore
+    @Environment(BackendClient.self) private var backendClient
     @State private var viewModel = QueryViewModel()
     @State private var queryText = ""
     @FocusState private var isTextFocused: Bool
@@ -112,7 +114,12 @@ struct QueryConsoleView: View {
         let text = queryText
         queryText = ""
         Task {
-            await viewModel.execute(query: text, roomID: roomID)
+            await viewModel.execute(
+                query: text,
+                roomID: roomID,
+                roomStore: roomStore,
+                backendClient: backendClient
+            )
         }
     }
 }

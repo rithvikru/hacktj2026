@@ -1,4 +1,4 @@
-import SwiftData
+import Observation
 import Foundation
 
 @Observable
@@ -12,22 +12,23 @@ final class HiddenSearchViewModel {
         self.roomID = roomID
     }
 
-    func loadHypotheses(modelContext: ModelContext) {
+    func loadHypotheses(roomStore: RoomStore) {
         isLoading = true
-        let descriptor = FetchDescriptor<ObjectHypothesis>(
-            predicate: #Predicate { $0.room?.id == roomID },
-            sortBy: [SortDescriptor(\.rank)]
-        )
-        hypotheses = (try? modelContext.fetch(descriptor)) ?? []
+        if let room = try? roomStore.fetchRoom(id: roomID) {
+            hypotheses = room.hypotheses.sorted { $0.rank < $1.rank }
+        } else {
+            hypotheses = []
+        }
         isLoading = false
     }
 
-    func runInference(query: String, modelContext: ModelContext) async {
+    func runInference(query: String, roomStore: RoomStore) async {
         isLoading = true
         let executor = HiddenInferenceExecutor(roomID: roomID)
 
-        let observations = fetchObservations(modelContext: modelContext)
-        let sceneNodes = fetchSceneNodes(modelContext: modelContext)
+        let room = try? roomStore.fetchRoom(id: roomID)
+        let observations = room?.observations ?? []
+        let sceneNodes = room?.sceneNodes.filter { $0.roomID == roomID } ?? []
         let results = executor.infer(query: query, observations: observations, sceneNodes: sceneNodes)
 
         for result in results {
@@ -38,30 +39,11 @@ final class HiddenSearchViewModel {
                 confidence: result.confidence,
                 reasons: result.reasons
             )
-            if let room = try? modelContext.fetch(
-                FetchDescriptor<RoomRecord>(predicate: #Predicate { $0.id == roomID })
-            ).first {
-                hypothesis.room = room
-            }
-            modelContext.insert(hypothesis)
+            hypothesis.room = room
+            room?.hypotheses.append(hypothesis)
         }
-        try? modelContext.save()
 
-        loadHypotheses(modelContext: modelContext)
+        loadHypotheses(roomStore: roomStore)
         isLoading = false
-    }
-
-    private func fetchObservations(modelContext: ModelContext) -> [ObjectObservation] {
-        let descriptor = FetchDescriptor<ObjectObservation>(
-            predicate: #Predicate { $0.room?.id == roomID }
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
-    }
-
-    private func fetchSceneNodes(modelContext: ModelContext) -> [SceneNode] {
-        let descriptor = FetchDescriptor<SceneNode>(
-            predicate: #Predicate { $0.roomID == roomID }
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
     }
 }

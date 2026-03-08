@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import RealityKit
 import ARKit
 import simd
@@ -33,8 +34,12 @@ final class LiveSearchViewModel {
     var screenProjectedObservations: [ScreenObservation] = []
     var isSearching = false
     var currentQuery: String = ""
+    var currentResult: SearchResult?
 
-    private var entityMap: [UUID: AnchorEntity] = []
+    private let intentParser = IntentParser()
+    private let searchPlanner = SearchPlanner()
+
+    @ObservationIgnored private var entityMap = Dictionary<UUID, AnchorEntity>()
 
     func syncOverlays(in arView: ARView?) {
         guard let arView else { return }
@@ -104,10 +109,59 @@ final class LiveSearchViewModel {
         screenProjectedObservations.removeAll()
     }
 
-    func executeSearch(query: String) async {
-        currentQuery = query
-        isSearching = true
+    func executeSearch(
+        query: String,
+        roomID: UUID?,
+        roomStore: RoomStore,
+        backendClient: BackendClient
+    ) async {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return }
 
+        currentQuery = trimmedQuery
+        isSearching = true
+        let intent = intentParser.parse(trimmedQuery, roomID: roomID)
+        let execution = await searchPlanner.execute(
+            intent: intent,
+            roomID: roomID,
+            roomStore: roomStore,
+            backendClient: backendClient
+        )
+        currentResult = execution.result
+        activeObservations = makeActiveObservations(
+            from: execution.localObservations,
+            backendResults: execution.backendResults
+        )
         isSearching = false
+    }
+
+    private func makeActiveObservations(
+        from observations: [ObjectObservation],
+        backendResults: [BackendSearchResult]
+    ) -> [ActiveObservation] {
+        var active = observations.map { observation in
+            ActiveObservation(
+                id: observation.id,
+                label: observation.label,
+                confidence: observation.confidence,
+                worldTransform: observation.worldTransform,
+                lastSeen: observation.observedAt
+            )
+        }
+
+        let backendObservations = backendResults.compactMap { result -> ActiveObservation? in
+            guard let values = result.worldTransform, let matrix = simd_float4x4.fromArray(values) else {
+                return nil
+            }
+            return ActiveObservation(
+                id: result.id,
+                label: result.label,
+                confidence: result.confidence,
+                worldTransform: matrix,
+                lastSeen: Date()
+            )
+        }
+        active.append(contentsOf: backendObservations)
+        return active.sorted { $0.confidence > $1.confidence }
     }
 }

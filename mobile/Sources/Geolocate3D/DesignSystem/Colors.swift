@@ -14,5 +14,22 @@ extension Color {
 
     static let glassWhite       = Color.white.opacity(0.06)
     static let glassEdge        = Color.white.opacity(0.12)
-    static let dimLabel         = Color.white.opacity(0.5)
+    static let dimLabel         = Color.white.opacity(0.65)
+    static let zinc900          = Color(red: 0.09, green: 0.09, blue: 0.10)
+    static let mutedSlate       = Color(red: 0.45, green: 0.45, blue: 0.50)
+}
+
+extension ShapeStyle where Self == Color {
+    static var spatialCyan: Color { .spatialCyan }
+    static var signalMagenta: Color { .signalMagenta }
+    static var confirmGreen: Color { .confirmGreen }
+    static var warningAmber: Color { .warningAmber }
+    static var inferenceViolet: Color { .inferenceViolet }
+    static var spaceBlack: Color { .spaceBlack }
+    static var obsidian: Color { .obsidian }
+    static var voidGray: Color { .voidGray }
+    static var glassWhite: Color { .glassWhite }
+    static var glassEdge: Color { .glassEdge }
+    static var dimLabel: Color { .dimLabel }
+    static var mutedSlate: Color { .mutedSlate }
 }

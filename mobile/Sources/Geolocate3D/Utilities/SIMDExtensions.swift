@@ -11,4 +11,33 @@ extension simd_float4x4 {
         guard data.count == MemoryLayout<simd_float4x4>.size else { return nil }
         return data.withUnsafeBytes { $0.load(as: simd_float4x4.self) }
     }
+
+    static func fromArray(_ values: [Float]) -> simd_float4x4? {
+        guard values.count == 16 else { return nil }
+        return simd_float4x4(columns: (
+            SIMD4(values[0], values[1], values[2], values[3]),
+            SIMD4(values[4], values[5], values[6], values[7]),
+            SIMD4(values[8], values[9], values[10], values[11]),
+            SIMD4(values[12], values[13], values[14], values[15])
+        ))
+    }
+
+    var columnMajorArray: [Float] {
+        [
+            columns.0.x, columns.0.y, columns.0.z, columns.0.w,
+            columns.1.x, columns.1.y, columns.1.z, columns.1.w,
+            columns.2.x, columns.2.y, columns.2.z, columns.2.w,
+            columns.3.x, columns.3.y, columns.3.z, columns.3.w,
+        ]
+    }
+}
+
+extension simd_float3x3 {
+    var columnMajorArray: [Float] {
+        [
+            columns.0.x, columns.0.y, columns.0.z,
+            columns.1.x, columns.1.y, columns.1.z,
+            columns.2.x, columns.2.y, columns.2.z,
+        ]
+    }
 }

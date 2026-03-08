@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "frame-record.schema.json",
+  "title": "FrameRecord",
+  "type": "object",
+  "required": [
+    "frame_id",
+    "room_id",
+    "session_id",
+    "timestamp",
+    "image_path",
+    "camera_transform16",
+    "intrinsics9",
+    "tracking_state",
+    "selected_for_training",
+    "selected_for_eval"
+  ],
+  "properties": {
+    "frame_id": { "type": "string" },
+    "room_id": { "type": "string" },
+    "session_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "image_path": { "type": "string" },
+    "depth_path": { "type": ["string", "null"] },
+    "camera_transform16": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 16,
+      "maxItems": 16
+    },
+    "intrinsics9": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 9,
+      "maxItems": 9
+    },
+    "tracking_state": { "type": "string" },
+    "selected_for_training": { "type": "boolean" },
+    "selected_for_eval": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

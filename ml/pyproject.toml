@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hacktj2026-ml"
+version = "0.1.0"
+description = "ML tooling and pipelines for the mobile 3D geolocation app"
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23.0",
+    "pydantic>=2.11.0",
+    "pyyaml>=6.0.2",
+    "rich>=13.9.4",
+    "typer>=0.15.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "ruff>=0.9.9",
+]
+training = [
+    "lightning>=2.5.1",
+    "numpy>=2.2.4",
+    "pillow>=11.1.0",
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
+]
+export = [
+    "coremltools>=8.1",
+]
+serving = [
+    "fastapi>=0.115.11",
+    "python-multipart>=0.0.18",
+    "uvicorn>=0.34.0",
+]
+retrieval = [
+    "faiss-cpu>=1.9.0",
+    "open-clip-torch>=2.31.0",
+    "transformers>=4.49.0",
+]
+vision = [
+    "opencv-python>=4.11.0.86",
+]
+reconstruction = [
+    "open3d>=0.18.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hacktj2026_ml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

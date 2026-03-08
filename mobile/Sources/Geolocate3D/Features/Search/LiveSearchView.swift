@@ -6,6 +6,8 @@ struct LiveSearchView: View {
     let roomID: UUID?
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(SpatialSessionManager.self) private var sessionManager
+    @Environment(BackendClient.self) private var backendClient
+    @Environment(RoomStore.self) private var roomStore
     @State private var viewModel = LiveSearchViewModel()
     @State private var relocMonitor = RelocalizationMonitor()
 
@@ -77,15 +79,50 @@ struct LiveSearchView: View {
                     .padding(.bottom, 4)
                 }
 
+                if let result = viewModel.currentResult {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(result.label)
+                            .font(SpatialFont.headline)
+                            .foregroundStyle(.white)
+                        Text(result.explanation)
+                            .font(SpatialFont.caption)
+                            .foregroundStyle(.dimLabel)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+                }
+
                 FloatingQueryBar(onSubmit: { query in
-                    Task { await viewModel.executeSearch(query: query) }
+                    Task {
+                        await viewModel.executeSearch(
+                            query: query,
+                            roomID: roomID,
+                            roomStore: roomStore,
+                            backendClient: backendClient
+                        )
+                    }
                 })
                 .padding(.bottom, 16)
             }
         }
-        .onAppear {
-            sessionManager.startWorldTracking()
-            relocMonitor.bind(to: sessionManager)
+        .task(id: roomID) {
+            startSession()
+            await backendClient.checkConnection()
+        }
+        .onChange(of: sessionManager.trackingState) { _, trackingState in
+            relocMonitor.update(
+                trackingState: trackingState,
+                mappingStatus: sessionManager.worldMappingStatus
+            )
+        }
+        .onChange(of: sessionManager.worldMappingStatus) { _, mappingStatus in
+            relocMonitor.update(
+                trackingState: sessionManager.trackingState,
+                mappingStatus: mappingStatus
+            )
         }
         .onDisappear {
             viewModel.clearOverlays(in: nil)
@@ -102,6 +139,24 @@ struct LiveSearchView: View {
             return .limited
         case .normal:
             return .normal
+        }
+    }
+
+    private func startSession() {
+        let persistence = RoomPersistenceService()
+        guard let roomID, persistence.worldMapExists(for: roomID) else {
+            relocMonitor.reset()
+            sessionManager.startWorldTracking()
+            return
+        }
+
+        let worldMapURL = persistence.worldMapURL(for: roomID)
+        if let worldMap = try? WorldMapStore.load(from: worldMapURL) {
+            sessionManager.startWorldTracking(initialWorldMap: worldMap)
+            relocMonitor.bind(to: sessionManager)
+        } else {
+            relocMonitor.reset()
+            sessionManager.startWorldTracking()
         }
     }
 }

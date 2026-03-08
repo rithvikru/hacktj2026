@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hidden-hypothesis-result.schema.json",
+  "title": "HiddenHypothesisResult",
+  "type": "object",
+  "required": [
+    "result_type",
+    "model_id",
+    "model_version",
+    "query_label",
+    "hypotheses"
+  ],
+  "properties": {
+    "result_type": {
+      "type": "string",
+      "enum": ["likely_hidden"]
+    },
+    "model_id": { "type": "string" },
+    "model_version": { "type": "string" },
+    "query_label": { "type": "string" },
+    "hypotheses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rank", "confidence", "reason_codes"],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 1 },
+          "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "world_transform16": {
+            "type": ["array", "null"],
+            "items": { "type": "number" },
+            "minItems": 16,
+            "maxItems": 16
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

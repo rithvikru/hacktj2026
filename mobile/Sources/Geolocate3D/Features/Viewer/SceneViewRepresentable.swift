@@ -75,6 +75,7 @@ struct SceneViewRepresentable: UIViewRepresentable {
         case .lastSeen:         return UIColor(Color.warningAmber)
         case .signalEstimated:  return UIColor(Color.signalMagenta)
         case .likelihoodRanked: return UIColor(Color.inferenceViolet)
+        case .staleMemory:      return UIColor(Color.warningAmber.opacity(0.5))
         case .noResult:         return UIColor(Color.dimLabel)
         }
     }
@@ -91,9 +92,10 @@ struct SceneViewRepresentable: UIViewRepresentable {
         displayLink.add(to: .main, forMode: .common)
     }
 
+    @MainActor
     final class Coordinator: NSObject {
         weak var scnView: SCNView?
-        var displayLink: CADisplayLink?
+        nonisolated(unsafe) var displayLink: CADisplayLink?
         var observations: [ObjectObservation] = []
         var projectedPositions: Binding<[UUID: CGPoint]>?
         var showObjects: Bool = true

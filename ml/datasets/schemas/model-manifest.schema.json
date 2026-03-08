@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "model-manifest.schema.json",
+  "title": "ModelManifest",
+  "type": "object",
+  "required": [
+    "model_id",
+    "model_family",
+    "version",
+    "training_data_manifest",
+    "eval_report_path",
+    "input_contract",
+    "output_contract",
+    "thresholds",
+    "owner",
+    "created_at"
+  ],
+  "properties": {
+    "model_id": { "type": "string" },
+    "model_family": { "type": "string" },
+    "version": { "type": "string" },
+    "training_data_manifest": { "type": "string" },
+    "eval_report_path": { "type": "string" },
+    "input_contract": { "type": "object" },
+    "output_contract": { "type": "object" },
+    "thresholds": { "type": "object" },
+    "owner": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

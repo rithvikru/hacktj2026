@@ -36,13 +36,19 @@ final class QueryViewModel {
         }
     }
 
-    func execute(query: String, roomID: UUID?) async {
+    func execute(query: String, roomID: UUID?, roomStore: RoomStore, backendClient: BackendClient) async {
         guard !query.isEmpty else { return }
         isProcessing = true
 
-        let intent = intentParser.parse(query)
+        let intent = intentParser.parse(query, roomID: roomID)
 
-        let result = await searchPlanner.execute(intent: intent, roomID: roomID)
+        let execution = await searchPlanner.execute(
+            intent: intent,
+            roomID: roomID,
+            roomStore: roomStore,
+            backendClient: backendClient
+        )
+        let result = execution.result
 
         currentResult = result
 

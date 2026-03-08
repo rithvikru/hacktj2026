@@ -7,24 +7,25 @@ struct ObjectTooltipOverlay: View {
         VStack(spacing: 4) {
             HStack(spacing: 6) {
                 ConfidenceIndicator(level: observation.confidenceClass)
-                    .frame(width: 12, height: 12)
+                    .frame(width: 16, height: 16)
 
                 Text(observation.label)
-                    .font(SpatialFont.headline)
+                    .font(SpatialFont.title2)
                     .foregroundStyle(.white)
             }
 
             Text("\(Int(observation.confidence * 100))%")
-                .font(SpatialFont.dataSmall)
+                .font(SpatialFont.dataMedium)
                 .foregroundStyle(.spatialCyan)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.spaceBlack.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(.white.opacity(0.15), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.spatialCyan, lineWidth: 2)
         }
+        .shadow(color: .spatialCyan.opacity(0.5), radius: 12)
     }
 }

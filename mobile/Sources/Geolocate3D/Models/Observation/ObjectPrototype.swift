@@ -1,9 +1,9 @@
-import SwiftData
+import Observation
 import Foundation
 
-@Model
-final class ObjectPrototype {
-    @Attribute(.unique) var id: UUID
+@Observable
+final class ObjectPrototype: Identifiable {
+    var id: UUID
     var canonicalName: String
     var displayName: String
     var synonyms: [String]
@@ -13,7 +13,6 @@ final class ObjectPrototype {
     var supportSurfaces: [String]
     var occlusionPriors: [String]
 
-    @Relationship(deleteRule: .nullify, inverse: \ObjectObservation.prototype)
     var observations: [ObjectObservation] = []
 
     init(canonicalName: String, displayName: String, synonyms: [String] = [],

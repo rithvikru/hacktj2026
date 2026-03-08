@@ -1,4 +1,4 @@
-import ARKit
+@preconcurrency import ARKit
 import Foundation
 
 enum WorldMapStore {

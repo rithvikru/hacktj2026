@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "PlannerRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "relation": {
+          "title": "Relation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation",
+        "reference"
+      ],
+      "title": "PlannerRelation",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attributes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Attributes",
+      "type": "array"
+    },
+    "frameRefs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Framerefs",
+      "type": "array"
+    },
+    "frameSelectionMode": {
+      "default": "live_priority",
+      "enum": [
+        "live_priority",
+        "saved_priority",
+        "hybrid",
+        "explicit_frame_refs"
+      ],
+      "title": "Frameselectionmode",
+      "type": "string"
+    },
+    "maxCandidates": {
+      "default": 20,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Maxcandidates",
+      "type": "integer"
+    },
+    "normalizedQuery": {
+      "title": "Normalizedquery",
+      "type": "string"
+    },
+    "queryText": {
+      "title": "Querytext",
+      "type": "string"
+    },
+    "relations": {
+      "items": {
+        "$ref": "#/$defs/PlannerRelation"
+      },
+      "title": "Relations",
+      "type": "array"
+    },
+    "roomId": {
+      "title": "Roomid",
+      "type": "string"
+    },
+    "targetPhrase": {
+      "title": "Targetphrase",
+      "type": "string"
+    }
+  },
+  "required": [
+    "queryText",
+    "normalizedQuery",
+    "targetPhrase",
+    "roomId"
+  ],
+  "title": "OpenVocabSearchRequest",
+  "type": "object"
+}

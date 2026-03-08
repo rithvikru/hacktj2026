@@ -1,43 +1,55 @@
-import SwiftData
+import Observation
 import Foundation
 import simd
 
-@Observable
 @MainActor
-final class RoomStore {
-    private let modelContext: ModelContext
+final class RoomStore: Observable {
+    private let _$observationRegistrar = ObservationRegistrar()
+    private var _rooms: [RoomRecord] = []
 
-    init(modelContext: ModelContext) {
-        self.modelContext = modelContext
+    var rooms: [RoomRecord] {
+        get {
+            _$observationRegistrar.access(self, keyPath: \.rooms)
+            return _rooms
+        }
+        set {
+            _$observationRegistrar.withMutation(of: self, keyPath: \.rooms) {
+                _rooms = newValue
+            }
+        }
     }
 
+    init() {}
+
     func fetchAllRooms() throws -> [RoomRecord] {
-        let descriptor = FetchDescriptor<RoomRecord>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        return try modelContext.fetch(descriptor)
+        rooms.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func fetchRoom(id: UUID) throws -> RoomRecord? {
-        var descriptor = FetchDescriptor<RoomRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        return try modelContext.fetch(descriptor).first
+        rooms.first { $0.id == id }
     }
 
     @discardableResult
     func createRoom(name: String) throws -> RoomRecord {
         let room = RoomRecord(name: name)
-        modelContext.insert(room)
-        try modelContext.save()
+        rooms.append(room)
         return room
     }
 
     func deleteRoom(_ room: RoomRecord) throws {
-        modelContext.delete(room)
-        try modelContext.save()
+        rooms.removeAll { $0.id == room.id }
     }
+
+    func insertRoom(_ room: RoomRecord) {
+        if !rooms.contains(where: { $0.id == room.id }) {
+            rooms.append(room)
+        }
+    }
+
+    func insertObservation(_ observation: ObjectObservation) {}
+    func insertNode(_ node: SceneNode) {}
+    func insertHypothesis(_ hypothesis: ObjectHypothesis) {}
+    func save() throws {}
 
     func saveObservation(label: String, source: ObservationSource,
                          confidence: Double, transform: simd_float4x4,
@@ -48,16 +60,12 @@ final class RoomStore {
             confidence: confidence, transform: transform
         )
         observation.room = room
-        modelContext.insert(observation)
+        room.observations.append(observation)
         room.updatedAt = Date()
-        try modelContext.save()
     }
 
     func fetchObservations(roomID: UUID) throws -> [ObjectObservation] {
-        let descriptor = FetchDescriptor<ObjectObservation>(
-            predicate: #Predicate { $0.room?.id == roomID },
-            sortBy: [SortDescriptor(\.observedAt, order: .reverse)]
-        )
-        return try modelContext.fetch(descriptor)
+        guard let room = try fetchRoom(id: roomID) else { return [] }
+        return room.observations.sorted { $0.observedAt > $1.observedAt }
     }
 }
