@@ -38,7 +38,6 @@ struct RoomPreviewCard: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-
                 HStack {
                     Text(room.name)
                         .font(SpatialFont.title2)
@@ -57,13 +56,13 @@ struct RoomPreviewCard: View {
                     .foregroundStyle(.dimLabel)
 
                 HStack(spacing: 8) {
-                    ActionPill(icon: "arkit", label: "Search", action: onSearch)
-                    ActionPill(icon: "text.magnifyingglass", label: "Query", action: onQuery)
-                    ActionPill(icon: "cube.transparent", label: "Twin", action: onTwin)
+                    ActionPill(label: "Search", action: onSearch)
+                    ActionPill(label: "Query", action: onQuery)
+                    ActionPill(label: "3D View", action: onTwin)
                     Spacer()
                     Button(role: .destructive, action: onDelete) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 14, weight: .medium))
+                        Text("x")
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
                             .foregroundStyle(.dimLabel)
                             .frame(width: 36, height: 36)
                             .background(.white.opacity(0.06), in: Circle())
@@ -101,25 +100,20 @@ struct RoomPreviewCard: View {
 }
 
 private struct ActionPill: View {
-    let icon: String
     let label: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(label)
-                    .font(SpatialFont.caption)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.white.opacity(0.08), in: Capsule())
-            .overlay {
-                Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5)
-            }
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(.white.opacity(0.08), in: Capsule())
+                .overlay {
+                    Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5)
+                }
         }
     }
 }

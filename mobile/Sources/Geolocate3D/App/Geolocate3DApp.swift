@@ -16,25 +16,32 @@ struct Geolocate3DApp: App {
             UserDefaults.standard.string(forKey: "wearableBridgeMode")
         )
     )
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
-                .environment(coordinator)
-                .environment(spatialSessionManager)
-                .environment(roomStore)
-                .environment(backendClient)
-                .environment(wearableStreamManager)
-                .preferredColorScheme(.dark)
-                .task {
-                    wearableStreamManager.attachBackendClient(backendClient)
-                    wearableStreamManager.configureIfNeeded()
+            Group {
+                if hasCompletedOnboarding {
+                    RootTabView()
+                } else {
+                    OnboardingChoiceView()
                 }
-                .onOpenURL { url in
-                    Task {
-                        await wearableStreamManager.handleOpenURL(url)
-                    }
+            }
+            .environment(coordinator)
+            .environment(spatialSessionManager)
+            .environment(roomStore)
+            .environment(backendClient)
+            .environment(wearableStreamManager)
+            .preferredColorScheme(.dark)
+            .task {
+                wearableStreamManager.attachBackendClient(backendClient)
+                wearableStreamManager.configureIfNeeded()
+            }
+            .onOpenURL { url in
+                Task {
+                    await wearableStreamManager.handleOpenURL(url)
                 }
+            }
         }
     }
 }

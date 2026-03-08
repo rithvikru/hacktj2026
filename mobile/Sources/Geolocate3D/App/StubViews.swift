@@ -284,6 +284,10 @@ struct SettingsView: View {
                 }
                 Section("About") {
                     Text("Geolocate3D v0.1")
+                    Button("Reset Onboarding") {
+                        UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                    }
+                    .foregroundStyle(.red)
                 }
             }
             .navigationTitle("Settings")

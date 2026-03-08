@@ -22,6 +22,9 @@ let package = Package(
                 .product(name: "MWDATCore", package: "meta-wearables-dat-ios"),
                 .product(name: "MWDATCamera", package: "meta-wearables-dat-ios"),
             ],
+            resources: [
+                .copy("Resources"),
+            ],
             swiftSettings: [
             ]
         ),

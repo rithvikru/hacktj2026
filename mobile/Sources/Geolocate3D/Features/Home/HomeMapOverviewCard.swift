@@ -15,9 +15,6 @@ struct HomeMapOverviewCard: View {
                         .foregroundStyle(.dimLabel)
                 }
                 Spacer()
-                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.spatialCyan)
             }
 
             if rooms.isEmpty {
