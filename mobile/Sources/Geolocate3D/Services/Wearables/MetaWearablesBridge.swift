@@ -205,13 +205,9 @@ final class MetaWearablesBridge: WearablesBridge {
         }
         stateListeners.append(stateToken)
 
-        var droppedFrameCount = 0
         let frameToken = session.videoFramePublisher.listen { frame in
             guard let image = frame.makeUIImage() else {
-                droppedFrameCount += 1
-                if droppedFrameCount <= 5 || droppedFrameCount % 50 == 0 {
-                    NSLog("[MWDAT] frame.makeUIImage() returned nil (dropped: %d)", droppedFrameCount)
-                }
+                NSLog("[MWDAT] frame.makeUIImage() returned nil")
                 return
             }
             let captured = WearableCapturedFrame(
