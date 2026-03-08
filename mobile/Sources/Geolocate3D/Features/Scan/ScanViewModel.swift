@@ -1,9 +1,18 @@
 import Foundation
 import ARKit
+import CoreGraphics
 import RoomPlan
 import SwiftData
 import simd
 import UIKit
+
+struct ScanSpotlightDetection: Identifiable, Equatable {
+    let id: UUID
+    let label: String
+    let confidence: Double
+    let viewportRectNormalized: CGRect
+    let maskAvailable: Bool
+}
 
 /// Manages the RoomPlan capture session lifecycle.
 /// Fix 2 applied: no JSONEncoder().encode(room) — CapturedRoom is not Codable.
@@ -14,6 +23,7 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     var scanState: ScanState = .initializing
     var detectedObjectCount: Int = 0
     var savedRoomID: UUID?
+    var liveSpotlightDetections: [ScanSpotlightDetection] = []
 
     override init() { super.init() }
     nonisolated required init?(coder: NSCoder) { nil }
@@ -25,6 +35,19 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     private let maximumKeyframeInterval: TimeInterval = 2.0
     private let minimumKeyframeTranslation: Float = 0.12
     private let minimumKeyframeRotation: Float = 0.20
+    private let minimumLiveDetectionInterval: TimeInterval = 1.8
+    private let liveSpotlightLabels = [
+        "phone",
+        "airpods case",
+        "wallet",
+        "keys",
+        "glasses",
+        "charger",
+        "tv remote",
+        "spoon",
+        "bottle",
+        "can",
+    ]
 
     private var captureView: RoomCaptureView?
     private var capturedRoomData: CapturedRoomData?
@@ -35,14 +58,20 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     private var captureSamplingTask: Task<Void, Never>?
     private var lastCapturedAt: Date?
     private var lastCapturedTransform: simd_float4x4?
+    private var scanBackendClient: BackendClient?
+    private var liveDetectionTask: Task<Void, Never>?
+    private var lastLiveDetectionAt: Date?
 
     deinit {
         let task = MainActor.assumeIsolated { captureSamplingTask }
         task?.cancel()
+        let detectionTask = MainActor.assumeIsolated { liveDetectionTask }
+        detectionTask?.cancel()
     }
 
-    func startSession(captureView: RoomCaptureView) {
+    func startSession(captureView: RoomCaptureView, backendClient: BackendClient? = nil) {
         self.captureView = captureView
+        self.scanBackendClient = backendClient
         resetCaptureState()
 
         let roomID = UUID()
@@ -206,6 +235,8 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
     private func resetCaptureState() {
         captureSamplingTask?.cancel()
         captureSamplingTask = nil
+        liveDetectionTask?.cancel()
+        liveDetectionTask = nil
         capturedRoomData = nil
         activeRoomID = nil
         activeSessionID = nil
@@ -213,8 +244,10 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
         collectedFrames.removeAll()
         lastCapturedAt = nil
         lastCapturedTransform = nil
+        lastLiveDetectionAt = nil
         detectedObjectCount = 0
         savedRoomID = nil
+        liveSpotlightDetections = []
     }
 
     private func startFrameSampling() {
@@ -273,10 +306,95 @@ final class ScanViewModel: NSObject, RoomCaptureViewDelegate, RoomCaptureSession
             collectFrame(record)
             lastCapturedAt = capturedAt
             lastCapturedTransform = frame.camera.transform
+            let displayTransform = frame.displayTransform(
+                for: .portrait,
+                viewportSize: captureView.bounds.size
+            )
+            scheduleLiveSpotlightDetection(
+                imagePath: assets.imagePath,
+                capturedAt: capturedAt,
+                displayTransform: displayTransform
+            )
         } catch {
             stopFrameSampling()
             scanState = .error(error.localizedDescription)
         }
+    }
+
+    private func scheduleLiveSpotlightDetection(
+        imagePath: String,
+        capturedAt: Date,
+        displayTransform: CGAffineTransform
+    ) {
+        guard case .scanning = scanState else { return }
+        guard let scanBackendClient else { return }
+        guard liveDetectionTask == nil else { return }
+        if let lastLiveDetectionAt,
+           capturedAt.timeIntervalSince(lastLiveDetectionAt) < minimumLiveDetectionInterval {
+            return
+        }
+
+        lastLiveDetectionAt = capturedAt
+        let imageURL = URL(fileURLWithPath: imagePath)
+        let labels = liveSpotlightLabels
+        liveDetectionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.liveDetectionTask = nil }
+
+            do {
+                let detections = try await scanBackendClient.liveScanDetect(
+                    imageURL: imageURL,
+                    labels: labels
+                )
+                self.liveSpotlightDetections = detections.compactMap { detection in
+                    self.viewportSpotlightDetection(from: detection, displayTransform: displayTransform)
+                }
+            } catch {
+                // Keep the scan UI responsive even if backend spotlight inference is unavailable.
+            }
+        }
+    }
+
+    private func viewportSpotlightDetection(
+        from detection: LiveScanDetection,
+        displayTransform: CGAffineTransform
+    ) -> ScanSpotlightDetection? {
+        guard detection.bboxXYXYNorm.count == 4 else { return nil }
+        let x1 = detection.bboxXYXYNorm[0]
+        let y1 = detection.bboxXYXYNorm[1]
+        let x2 = detection.bboxXYXYNorm[2]
+        let y2 = detection.bboxXYXYNorm[3]
+        guard x2 > x1, y2 > y1 else { return nil }
+
+        let corners = [
+            CGPoint(x: x1, y: y1),
+            CGPoint(x: x2, y: y1),
+            CGPoint(x: x1, y: y2),
+            CGPoint(x: x2, y: y2),
+        ].map { $0.applying(displayTransform) }
+
+        guard let minX = corners.map(\.x).min(),
+              let maxX = corners.map(\.x).max(),
+              let minY = corners.map(\.y).min(),
+              let maxY = corners.map(\.y).max() else {
+            return nil
+        }
+
+        let viewportRect = CGRect(
+            x: min(max(minX, 0), 1),
+            y: min(max(minY, 0), 1),
+            width: min(max(maxX, 0), 1) - min(max(minX, 0), 1),
+            height: min(max(maxY, 0), 1) - min(max(minY, 0), 1)
+        )
+        guard viewportRect.width > 0.01, viewportRect.height > 0.01 else { return nil }
+
+        return ScanSpotlightDetection(
+            id: detection.id,
+            label: detection.label,
+            confidence: detection.confidence,
+            viewportRectNormalized: viewportRect,
+            maskAvailable: detection.maskAvailable
+        )
     }
 
     private var isActivelyScanning: Bool {

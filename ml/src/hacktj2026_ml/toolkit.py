@@ -20,7 +20,7 @@ from hacktj2026_ml.query_contracts import (
 
 logger = logging.getLogger(__name__)
 
-INTERACTIVE_OPEN_VOCAB_FRAME_LIMIT = 8
+INTERACTIVE_OPEN_VOCAB_FRAME_LIMIT = 4
 HYBRID_OPEN_VOCAB_FRAME_LIMIT = 12
 QUALITY_OPEN_VOCAB_FRAME_LIMIT = 24
 OPEN_VOCAB_CLIP_PREFILTER_MULTIPLIER = 3
@@ -204,13 +204,6 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
     Falls back to dummy results if ML dependencies are not installed.
     """
     try:
-        import numpy as np
-        from PIL import Image
-
-        from open_vocab.fusion import fuse_grounded_detections
-        from open_vocab.grounding_dino.run_grounding import detect
-        from open_vocab.retrieval.build_index import build_index, query_index
-        from open_vocab.sam2.run_segmentation import segment
         from serving.storage.room_store import RoomStore
     except ImportError as exc:
         logger.warning("ML pipeline imports unavailable, returning empty results: %s", exc)
@@ -222,11 +215,49 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         logger.info("No frames available for room %s", request.room_id)
         return []
 
+    candidates = _run_open_vocab_pipeline_once(request, room)
+    if not _should_escalate_open_vocab_search(
+        request=request,
+        room=room,
+        candidates=candidates,
+    ):
+        return candidates
+
+    escalated_mode = _next_open_vocab_mode(request.frame_selection_mode)
+    if escalated_mode is None:
+        return candidates
+
+    logger.info(
+        "Escalating open-vocab search for room %s from %s to %s",
+        request.room_id,
+        request.frame_selection_mode,
+        escalated_mode,
+    )
+    escalated_request = request.model_copy(update={"frame_selection_mode": escalated_mode})
+    escalated_candidates = _run_open_vocab_pipeline_once(escalated_request, room)
+    if _prefer_escalated_candidates(escalated_candidates, candidates):
+        return escalated_candidates
+    return candidates
+
+
+def _run_open_vocab_pipeline_once(
+    request: OpenVocabSearchRequest,
+    room,
+) -> list[OpenVocabCandidateDTO]:
+    import numpy as np
+    from PIL import Image
+
+    from open_vocab.fusion import fuse_grounded_detections
+    from open_vocab.grounding_dino.run_grounding import detect
+    from open_vocab.retrieval.build_index import build_index, query_index
+    from open_vocab.sam2.run_segmentation import segment
+
     runtime = _open_vocab_runtime_settings(request)
 
     image_paths = _select_room_image_paths(
         room_frame_dir=room.frame_dir,
         frames=room.frames,
+        frame_selection_mode=request.frame_selection_mode,
         frame_refs=request.frame_refs,
         frame_limit=runtime["frame_limit"],
     )
@@ -368,6 +399,76 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
     return candidates
 
 
+@dataclass(slots=True)
+class FrameCandidate:
+    path: Path
+    order_index: int
+    timestamp: str
+    has_grounding: bool
+    has_depth: bool
+
+
+def _frame_candidates(
+    room_frame_dir: Path,
+    frames: list[dict],
+) -> list[FrameCandidate]:
+    candidates: list[FrameCandidate] = []
+    for index, frame in enumerate(frames):
+        reference = (
+            frame.get("image_path")
+            or frame.get("imagePath")
+            or frame.get("filename")
+            or frame.get("image")
+        )
+        if not reference:
+            continue
+        path = _resolve_room_file(room_frame_dir, reference)
+        if not path.exists():
+            continue
+        candidates.append(
+            FrameCandidate(
+                path=path,
+                order_index=index,
+                timestamp=str(frame.get("timestamp") or frame.get("observedAt") or ""),
+                has_grounding=_frame_has_grounding_metadata(frame),
+                has_depth=_frame_has_depth(frame),
+            )
+        )
+
+    candidates.sort(key=lambda candidate: (candidate.timestamp or "", candidate.order_index))
+    return candidates
+
+
+def _frame_has_grounding_metadata(frame: dict) -> bool:
+    intrinsics = frame.get("intrinsics9") or frame.get("intrinsics_9") or frame.get("intrinsics")
+    extrinsics = (
+        frame.get("camera_transform16")
+        or frame.get("cameraTransform16")
+        or frame.get("cameraPoseTransform")
+        or frame.get("extrinsics")
+    )
+    return isinstance(intrinsics, list) and len(intrinsics) == 9 and isinstance(extrinsics, list) and len(extrinsics) == 16
+
+
+def _frame_has_depth(frame: dict) -> bool:
+    return bool(
+        frame.get("depth_path")
+        or frame.get("depthPath")
+        or frame.get("estimatedDepth")
+        or frame.get("depth")
+    )
+
+
+def _preferred_frame_pool(candidates: list[FrameCandidate]) -> list[FrameCandidate]:
+    depth_ready = [candidate for candidate in candidates if candidate.has_grounding and candidate.has_depth]
+    if depth_ready:
+        return depth_ready
+    grounding_ready = [candidate for candidate in candidates if candidate.has_grounding]
+    if grounding_ready:
+        return grounding_ready
+    return candidates
+
+
 def _try_backproject(det, room, images: dict) -> list[float] | None:
     """Try to back-project a detection to world coordinates using frame metadata."""
     try:
@@ -438,6 +539,7 @@ def _select_room_image_paths(
     *,
     room_frame_dir: Path,
     frames: list[dict],
+    frame_selection_mode: str = "saved_priority",
     frame_refs: list[str],
     frame_limit: int,
 ) -> list[Path]:
@@ -447,40 +549,87 @@ def _select_room_image_paths(
             for ref in frame_refs
         )
 
-    resolved = _dedupe_existing_paths(
-        _resolve_room_file(
-            room_frame_dir,
-            frame.get("image_path")
-            or frame.get("imagePath")
-            or frame.get("filename")
-            or frame.get("image")
-            or "",
-        )
-        for frame in frames
-        if (
-            frame.get("image_path")
-            or frame.get("imagePath")
-            or frame.get("filename")
-            or frame.get("image")
-        )
-    )
+    candidates = _frame_candidates(room_frame_dir, frames)
+    preferred = _preferred_frame_pool(candidates)
+    resolved = [candidate.path for candidate in preferred]
     if len(resolved) <= frame_limit:
         return resolved
 
-    stride = max(len(resolved) // frame_limit, 1)
-    sampled = resolved[::stride]
-    if len(sampled) > frame_limit:
-        sampled = sampled[:frame_limit]
-    if sampled and sampled[-1] != resolved[-1] and len(sampled) < frame_limit:
-        sampled.append(resolved[-1])
-    elif sampled and sampled[-1] != resolved[-1]:
-        sampled[-1] = resolved[-1]
+    if frame_selection_mode == "live_priority":
+        recent = resolved[-frame_limit:]
+        logger.info(
+            "Using %d most recent geometry-ready room frames for live open-vocab search",
+            len(recent),
+        )
+        return recent
+
+    if frame_selection_mode == "hybrid":
+        recent_budget = max(frame_limit // 2, 1)
+        recent = resolved[-recent_budget:]
+        earlier = resolved[:-recent_budget]
+        sampled_earlier = _evenly_sample_paths(earlier, frame_limit - len(recent))
+        hybrid = _dedupe_existing_paths([*sampled_earlier, *recent])
+        logger.info(
+            "Using %d hybrid geometry-ready room frames (%d sampled + %d recent) for open-vocab search",
+            len(hybrid),
+            len(sampled_earlier),
+            len(recent),
+        )
+        return hybrid[:frame_limit]
+
+    sampled = _evenly_sample_paths(resolved, frame_limit)
     logger.info(
         "Sampling %d/%d room frames for open-vocab search",
         len(sampled),
         len(resolved),
     )
     return sampled
+
+
+def _should_escalate_open_vocab_search(
+    *,
+    request: OpenVocabSearchRequest,
+    room,
+    candidates: list[OpenVocabCandidateDTO],
+) -> bool:
+    if request.frame_refs:
+        return False
+    if room.reconstruction_status != "complete":
+        return False
+    if request.frame_selection_mode not in {"live_priority", "hybrid"}:
+        return False
+    if not room.frames or len(room.frames) < 12:
+        return False
+    if not candidates:
+        return True
+    return not any(candidate.world_transform16 for candidate in candidates)
+
+
+def _next_open_vocab_mode(frame_selection_mode: str) -> str | None:
+    if frame_selection_mode == "live_priority":
+        return "saved_priority"
+    if frame_selection_mode == "hybrid":
+        return "saved_priority"
+    return None
+
+
+def _prefer_escalated_candidates(
+    escalated: list[OpenVocabCandidateDTO],
+    baseline: list[OpenVocabCandidateDTO],
+) -> bool:
+    if not escalated:
+        return False
+    if not baseline:
+        return True
+
+    escalated_grounded = sum(1 for candidate in escalated if candidate.world_transform16)
+    baseline_grounded = sum(1 for candidate in baseline if candidate.world_transform16)
+    if escalated_grounded != baseline_grounded:
+        return escalated_grounded > baseline_grounded
+
+    escalated_score = max(candidate.confidence for candidate in escalated)
+    baseline_score = max(candidate.confidence for candidate in baseline)
+    return escalated_score >= baseline_score
 
 
 def _dedupe_existing_paths(paths) -> list[Path]:
@@ -492,6 +641,23 @@ def _dedupe_existing_paths(paths) -> list[Path]:
         deduped.append(path)
         seen.add(path)
     return deduped
+
+
+def _evenly_sample_paths(paths: list[Path], limit: int) -> list[Path]:
+    if limit <= 0 or not paths:
+        return []
+    if len(paths) <= limit:
+        return list(paths)
+
+    stride = max(len(paths) // limit, 1)
+    sampled = list(paths[::stride])
+    if len(sampled) > limit:
+        sampled = sampled[:limit]
+    if sampled and sampled[-1] != paths[-1] and len(sampled) < limit:
+        sampled.append(paths[-1])
+    elif sampled and sampled[-1] != paths[-1]:
+        sampled[-1] = paths[-1]
+    return sampled
 
 
 @dataclass(slots=True)
@@ -533,10 +699,10 @@ def _open_vocab_runtime_settings(request: OpenVocabSearchRequest) -> dict[str, i
         return {
             "frame_limit": INTERACTIVE_OPEN_VOCAB_FRAME_LIMIT,
             "max_prompt_variants": 2,
-            "max_tiles_per_frame": 4,
-            "detection_limit": 48,
-            "sam2_top_k": 6,
-            "fallback_top_k": 10,
+            "max_tiles_per_frame": 3,
+            "detection_limit": 32,
+            "sam2_top_k": 4,
+            "fallback_top_k": 8,
         }
     if request.frame_selection_mode == "hybrid":
         return {

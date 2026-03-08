@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import numpy as np
 
 from open_vocab.fusion import (
     GroundedObservation,
+    _ground_detection,
     cluster_grounded_observations,
     robust_depth_from_bbox,
 )
@@ -82,3 +85,50 @@ def test_cluster_grounded_observations_merges_close_views():
     assert len(clusters) == 2
     assert len(clusters[0].observations) == 3
     assert clusters[0].score > clusters[1].score
+
+
+def test_ground_detection_marks_bbox_fallback_when_sam_mask_missing():
+    detection = type(
+        "DetectionStub",
+        (),
+        {
+            "image_path": "frame-1.jpg",
+            "bbox_xyxy_norm": [0.2, 0.2, 0.4, 0.4],
+            "confidence": 0.8,
+            "label": "phone",
+        },
+    )()
+    mask = type(
+        "MaskStub",
+        (),
+        {
+            "mask": None,
+            "stability_score": 0.5,
+        },
+    )()
+    image = np.zeros((10, 10, 3), dtype=np.uint8)
+    frame_meta = {
+        "intrinsics9": [1.0, 0.0, 5.0, 0.0, 1.0, 5.0, 0.0, 0.0, 1.0],
+        "camera_transform16": [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ],
+        "depth": 1.5,
+    }
+
+    grounded = _ground_detection(
+        detection_idx=0,
+        detection=detection,
+        mask=mask,
+        rerank_score=None,
+        frame_meta=frame_meta,
+        bundle_dir=Path("."),
+        image=image,
+        depth_cache={},
+    )
+
+    assert grounded is not None
+    assert "bboxMaskFallback" in grounded.evidence
+    assert "sam2" not in grounded.evidence

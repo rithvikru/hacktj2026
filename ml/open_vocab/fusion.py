@@ -80,11 +80,19 @@ def fuse_grounded_detections(
         evidence.append("multiViewFusion")
         evidence = sorted(set(evidence))
         view_count = len(cluster.observations)
-        explanation = (
-            f"Fused {view_count} views with mask-aware 3D grounding."
-            if view_count > 1
-            else "Grounded with mask-aware 3D projection."
-        )
+        used_sam2 = "sam2" in evidence
+        if used_sam2:
+            explanation = (
+                f"Fused {view_count} views with mask-aware 3D grounding."
+                if view_count > 1
+                else "Grounded with mask-aware 3D projection."
+            )
+        else:
+            explanation = (
+                f"Fused {view_count} views with bbox/depth 3D grounding."
+                if view_count > 1
+                else "Grounded with bbox/depth 3D projection."
+            )
         candidates.append(
             OpenVocabCandidateDTO(
                 id=str(uuid4()),
@@ -216,8 +224,10 @@ def _ground_detection(
         (detection.bbox_xyxy_norm[1] + detection.bbox_xyxy_norm[3]) * 0.5,
     )
 
+    has_real_mask = mask is not None and getattr(mask, "mask", None) is not None
+
     if depth_map_m is not None:
-        if mask is not None and getattr(mask, "mask", None) is not None:
+        if has_real_mask:
             depth_m, uv_norm, support_count = robust_depth_from_mask(depth_map_m, mask.mask)
         else:
             depth_m, uv_norm = robust_depth_from_bbox(depth_map_m, detection.bbox_xyxy_norm)
@@ -240,9 +250,11 @@ def _ground_detection(
 
     evidence = ["backendOpenVocab", "groundingDINO"]
     mask_ref = None
-    if mask is not None:
+    if has_real_mask:
         evidence.append("sam2")
         mask_ref = f"sam2:{Path(detection.image_path).name}:{detection_idx}"
+    else:
+        evidence.append("bboxMaskFallback")
     if rerank_score is not None:
         evidence.append("clipReranked")
 

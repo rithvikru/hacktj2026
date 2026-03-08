@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 import logging
@@ -26,12 +27,12 @@ def _load_model():
         import torch
         from transformers import AutoModelForZeroShotObjectDetection, AutoProcessor
 
-        model_id = "IDEA-Research/grounding-dino-tiny"
-        _processor = AutoProcessor.from_pretrained(model_id)
+        model_id = os.getenv("GROUNDING_DINO_MODEL_ID", "IDEA-Research/grounding-dino-tiny")
+        _processor = AutoProcessor.from_pretrained(model_id, use_fast=False)
         _model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id)
         device = "cuda" if torch.cuda.is_available() else "cpu"
         _model = _model.to(device)
-        logger.info("Grounding DINO loaded on %s", device)
+        logger.info("Grounding DINO loaded on %s using %s", device, model_id)
     return _model, _processor
 
 
@@ -143,13 +144,22 @@ def _run_detection_pass(
     with torch.no_grad():
         outputs = model(**inputs)
 
-    results = processor.post_process_grounded_object_detection(
-        outputs,
-        inputs["input_ids"],
-        box_threshold=box_threshold,
-        text_threshold=text_threshold,
-        target_sizes=[image.size[::-1]],
-    )[0]
+    try:
+        results = processor.post_process_grounded_object_detection(
+            outputs,
+            inputs["input_ids"],
+            box_threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]],
+        )[0]
+    except TypeError:
+        results = processor.post_process_grounded_object_detection(
+            outputs,
+            inputs["input_ids"],
+            threshold=box_threshold,
+            text_threshold=text_threshold,
+            target_sizes=[image.size[::-1]],
+        )[0]
 
     width, height = image.size
     detections: list[Detection] = []

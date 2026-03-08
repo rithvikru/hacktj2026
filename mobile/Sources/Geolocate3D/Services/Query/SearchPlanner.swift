@@ -72,7 +72,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 modelContext: modelContext
             )
-            if localResult.result.resultType != .noResult {
+            if shouldAcceptLocalResult(localResult.result) {
                 return SearchExecutionResult(
                     result: localResult.result,
                     localObservations: localResult.observations,
@@ -84,6 +84,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 roomID: roomID,
                 fallback: localResult.result,
+                fallbackObservations: localResult.observations,
                 backendClient: backendClient
             )
         case .listObjects(let category):
@@ -101,7 +102,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 modelContext: modelContext
             )
-            if localResult.result.resultType != .noResult {
+            if shouldAcceptLocalResult(localResult.result) {
                 return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
             }
             return await executeBackendSearch(
@@ -109,6 +110,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 roomID: roomID,
                 fallback: localResult.result,
+                fallbackObservations: localResult.observations,
                 backendClient: backendClient
             )
         default:
@@ -155,7 +157,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 modelContext: modelContext
             )
-            if localResult.result.resultType != .noResult {
+            if shouldAcceptLocalResult(localResult.result) {
                 return SearchExecutionResult(result: localResult.result, localObservations: localResult.observations, backendResults: [])
             }
             return await executeBackendSearch(
@@ -163,6 +165,7 @@ struct SearchPlanner {
                 rawQuery: intent.rawQuery,
                 roomID: roomID,
                 fallback: localResult.result,
+                fallbackObservations: localResult.observations,
                 backendClient: backendClient
             )
         case .findObject, .listObjects, .describeLocation, .spatialRelation:
@@ -176,10 +179,11 @@ struct SearchPlanner {
         rawQuery: String,
         roomID: UUID?,
         fallback: SearchResult,
+        fallbackObservations: [ObjectObservation],
         backendClient: BackendClient?
     ) async -> SearchExecutionResult {
         guard let roomID, let backendClient else {
-            return SearchExecutionResult(result: fallback, localObservations: [], backendResults: [])
+            return SearchExecutionResult(result: fallback, localObservations: fallbackObservations, backendResults: [])
         }
 
         do {
@@ -196,7 +200,7 @@ struct SearchPlanner {
 
             let openVocabResults = try await backendClient.openVocabSearch(roomID: roomID, query: queryText)
             guard !openVocabResults.isEmpty else {
-                return SearchExecutionResult(result: fallback, localObservations: [], backendResults: [])
+                return SearchExecutionResult(result: fallback, localObservations: fallbackObservations, backendResults: [])
             }
 
             let result = makeBackendSummary(
@@ -217,7 +221,7 @@ struct SearchPlanner {
                 evidence: ["backend-search"],
                 timestamp: Date()
             )
-            return SearchExecutionResult(result: errorResult, localObservations: [], backendResults: [])
+            return SearchExecutionResult(result: errorResult, localObservations: fallbackObservations, backendResults: [])
         }
     }
 
@@ -244,5 +248,14 @@ struct SearchPlanner {
             evidence: top.evidence.isEmpty ? ["backend-search"] : top.evidence,
             timestamp: Date()
         )
+    }
+
+    private func shouldAcceptLocalResult(_ result: SearchResult) -> Bool {
+        switch result.resultType {
+        case .confirmedHigh, .confirmedMedium:
+            return true
+        case .lastSeen, .signalEstimated, .likelihoodRanked, .noResult:
+            return false
+        }
     }
 }

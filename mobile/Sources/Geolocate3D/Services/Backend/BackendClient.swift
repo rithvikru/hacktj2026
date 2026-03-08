@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import simd
 
 @Observable
@@ -49,9 +50,10 @@ final class BackendClient {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, _) = try await session.data(for: request)
-        let response = try JSONDecoder().decode(CreateRoomResponse.self, from: data)
-        return response.roomID
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        let decodedResponse = try JSONDecoder().decode(CreateRoomResponse.self, from: data)
+        return decodedResponse.roomID
     }
 
     func uploadFrameBundle(roomID: UUID, bundleURL: URL) async throws {
@@ -61,14 +63,16 @@ final class BackendClient {
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         let body = try makeFrameBundleMultipartBody(bundleURL: bundleURL, boundary: boundary)
-        let (_, _) = try await session.upload(for: request, from: body)
+        let (data, response) = try await session.upload(for: request, from: body)
+        try validateHTTPResponse(response, data: data)
     }
 
     func triggerReconstruction(roomID: UUID) async throws {
         let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/reconstruct")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        let (_, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
     }
 
     func pollReconstructionStatus(roomID: UUID) async throws -> ReconstructionStatus {
@@ -78,7 +82,8 @@ final class BackendClient {
 
     func fetchReconstructionAssets(roomID: UUID) async throws -> ReconstructionAssetsResponse {
         let url = baseURL.appendingPathComponent("rooms/\(roomID.uuidString)/assets")
-        let (data, _) = try await session.data(from: url)
+        let (data, response) = try await session.data(from: url)
+        try validateHTTPResponse(response, data: data)
         return try JSONDecoder().decode(ReconstructionAssetsResponse.self, from: data)
     }
 
@@ -89,7 +94,8 @@ final class BackendClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(OpenVocabSearchRequest(queryText: query))
 
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
         if let response = try? decoder.decode(OpenVocabSearchResponse.self, from: data) {
             return response.candidates.enumerated().map { index, candidate in
                 BackendSearchResult(
@@ -112,7 +118,8 @@ final class BackendClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(QueryRequest(queryText: query))
 
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
         return try decoder.decode(BackendQueryResponse.self, from: data)
     }
 
@@ -129,7 +136,8 @@ final class BackendClient {
             )
         )
 
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
         return try decoder.decode(BackendChatResponse.self, from: data)
     }
 
@@ -155,7 +163,8 @@ final class BackendClient {
             )
         )
 
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
         return try decoder.decode(BackendRouteResponse.self, from: data)
     }
 
@@ -185,6 +194,42 @@ final class BackendClient {
         }
     }
 
+    func liveScanDetect(imageURL: URL, labels: [String], maxCandidates: Int = 6) async throws -> [LiveScanDetection] {
+        let url = baseURL.appendingPathComponent("scan/live-detect")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        try appendMultipartFile(
+            fieldName: "file",
+            fileURL: imageURL,
+            fileName: imageURL.lastPathComponent,
+            mimeType: "image/jpeg",
+            boundary: boundary,
+            into: &body
+        )
+        appendMultipartText(
+            fieldName: "labels",
+            value: labels.joined(separator: ","),
+            boundary: boundary,
+            into: &body
+        )
+        appendMultipartText(
+            fieldName: "maxCandidates",
+            value: String(maxCandidates),
+            boundary: boundary,
+            into: &body
+        )
+        body.appendUTF8("--\(boundary)--\r\n")
+
+        let (data, response) = try await session.upload(for: request, from: body)
+        try validateHTTPResponse(response, data: data)
+        let decoded = try decoder.decode(LiveScanDetectResponse.self, from: data)
+        return decoded.detections
+    }
+
     private func makeFrameBundleMultipartBody(bundleURL: URL, boundary: String) throws -> Data {
         let fileManager = FileManager.default
         let bundleDirectory = resolvedBundleDirectory(for: bundleURL)
@@ -202,29 +247,60 @@ final class BackendClient {
             boundary: boundary,
             into: &body
         )
-        try appendDirectoryFiles(
+        try appendMultipartFiles(
+            in: bundleDirectory.appendingPathComponent("images"),
             fieldName: "images",
-            directoryURL: bundleDirectory.appendingPathComponent("images"),
             mimeType: "image/jpeg",
             boundary: boundary,
             into: &body
         )
-        try appendDirectoryFiles(
+        try appendMultipartFiles(
+            in: bundleDirectory.appendingPathComponent("depth"),
             fieldName: "depth_files",
-            directoryURL: bundleDirectory.appendingPathComponent("depth"),
             mimeType: "image/png",
             boundary: boundary,
             into: &body
         )
-        try appendDirectoryFiles(
+        try appendMultipartFiles(
+            in: bundleDirectory.appendingPathComponent("confidence"),
             fieldName: "confidence_files",
-            directoryURL: bundleDirectory.appendingPathComponent("confidence"),
             mimeType: "image/png",
             boundary: boundary,
             into: &body
         )
         body.appendUTF8("--\(boundary)--\r\n")
         return body
+    }
+
+    private func appendMultipartFiles(
+        in directory: URL,
+        fieldName: String,
+        mimeType: String,
+        boundary: String,
+        into body: inout Data
+    ) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: directory.path) else {
+            return
+        }
+        let fileURLs = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )
+        for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+                continue
+            }
+            try appendMultipartFile(
+                fieldName: fieldName,
+                fileURL: fileURL,
+                fileName: fileURL.lastPathComponent,
+                mimeType: mimeType,
+                boundary: boundary,
+                into: &body
+            )
+        }
     }
 
     private func resolvedBundleDirectory(for bundleURL: URL) -> URL {
@@ -254,31 +330,6 @@ final class BackendClient {
         return URL(string: value)
     }
 
-    private func appendDirectoryFiles(
-        fieldName: String,
-        directoryURL: URL,
-        mimeType: String,
-        boundary: String,
-        into body: inout Data
-    ) throws {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: directoryURL.path) else { return }
-        let files = try fileManager.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: nil
-        ).sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for fileURL in files {
-            try appendMultipartFile(
-                fieldName: fieldName,
-                fileURL: fileURL,
-                fileName: fileURL.lastPathComponent,
-                mimeType: mimeType,
-                boundary: boundary,
-                into: &body
-            )
-        }
-    }
-
     private func appendMultipartFile(
         fieldName: String,
         fileURL: URL,
@@ -292,6 +343,42 @@ final class BackendClient {
         body.appendUTF8("Content-Type: \(mimeType)\r\n\r\n")
         body.append(try Data(contentsOf: fileURL))
         body.appendUTF8("\r\n")
+    }
+
+    private func appendMultipartText(
+        fieldName: String,
+        value: String,
+        boundary: String,
+        into body: inout Data
+    ) {
+        body.appendUTF8("--\(boundary)\r\n")
+        body.appendUTF8("Content-Disposition: form-data; name=\"\(fieldName)\"\r\n\r\n")
+        body.appendUTF8(value)
+        body.appendUTF8("\r\n")
+    }
+
+    private func validateHTTPResponse(_ response: URLResponse, data: Data? = nil) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            throw BackendError.httpStatus(code: httpResponse.statusCode, body: body)
+        }
+    }
+}
+
+private enum BackendError: LocalizedError {
+    case httpStatus(code: Int, body: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .httpStatus(let code, let body):
+            if body.isEmpty {
+                return "Backend request failed with HTTP \(code)."
+            }
+            return "Backend request failed with HTTP \(code): \(body)"
+        }
     }
 }
 
@@ -412,6 +499,44 @@ struct BackendSearchResult: Decodable, Identifiable {
         evidence = try container.decodeIfPresent([String].self, forKey: .evidence) ?? []
         explanation = try container.decodeIfPresent(String.self, forKey: .explanation) ?? ""
     }
+}
+
+struct LiveScanDetection: Decodable, Identifiable {
+    let id: UUID
+    let label: String
+    let confidence: Double
+    let bboxXYXYNorm: [CGFloat]
+    let maskAvailable: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case label
+        case confidence
+        case bboxXYXYNorm
+        case bbox_xyxy_norm
+        case maskAvailable
+        case mask_available
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? "object"
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0
+        let values =
+            try container.decodeIfPresent([Double].self, forKey: .bboxXYXYNorm) ??
+            (try container.decodeIfPresent([Double].self, forKey: .bbox_xyxy_norm)) ??
+            []
+        bboxXYXYNorm = values.map { CGFloat($0) }
+        maskAvailable =
+            try container.decodeIfPresent(Bool.self, forKey: .maskAvailable) ??
+            (try container.decodeIfPresent(Bool.self, forKey: .mask_available)) ??
+            false
+    }
+}
+
+private struct LiveScanDetectResponse: Decodable {
+    let detections: [LiveScanDetection]
 }
 
 struct BackendQueryResponse: Decodable {
@@ -584,9 +709,13 @@ struct BackendRouteResponse: Decodable {
 
 private struct QueryRequest: Encodable {
     let queryText: String
+    let sessionMode = "live"
+    let frameSelectionMode = "live_priority"
 
     private enum CodingKeys: String, CodingKey {
         case queryText = "query_text"
+        case sessionMode = "session_mode"
+        case frameSelectionMode = "frame_selection_mode"
     }
 }
 
@@ -625,10 +754,12 @@ private struct RouteRequest: Encodable {
 private struct OpenVocabSearchRequest: Encodable {
     let queryText: String
     let frameRefs: [String] = []
+    let frameSelectionMode = "live_priority"
 
     private enum CodingKeys: String, CodingKey {
         case queryText = "query_text"
         case frameRefs = "frame_refs"
+        case frameSelectionMode = "frame_selection_mode"
     }
 }
 

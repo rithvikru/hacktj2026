@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
 
@@ -37,6 +38,19 @@ from serving.storage.frame_bundle import (
 )
 from serving.storage.room_store import RoomStore
 
+logger = logging.getLogger(__name__)
+SCAN_LIVE_DEFAULT_LABELS = [
+    "phone",
+    "airpods case",
+    "wallet",
+    "keys",
+    "glasses",
+    "charger",
+    "tv remote",
+    "spoon",
+    "bottle",
+    "can",
+]
 
 # --- Request / Response models ---
 
@@ -126,6 +140,19 @@ class RouteResponseDTO(APIDTOModel):
     waypoints: list[RouteWaypointDTO] = Field(default_factory=list)
 
 
+class LiveScanDetectionDTO(APIDTOModel):
+    id: str
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    bbox_xyxy_norm: list[float] = Field(min_length=4, max_length=4)
+    mask_available: bool = False
+
+
+class LiveScanDetectResponseDTO(APIDTOModel):
+    labels: list[str] = Field(default_factory=list)
+    detections: list[LiveScanDetectionDTO] = Field(default_factory=list)
+
+
 # --- App setup ---
 
 app = FastAPI(title="hacktj2026-ml", version="0.2.0")
@@ -139,6 +166,32 @@ chat_service = ChatService(query_engine=engine)
 @app.get("/healthz")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/scan/live-detect", response_model=LiveScanDetectResponseDTO)
+async def live_detect_scan(
+    file: UploadFile = File(...),
+    labels: str | None = Form(default=None),
+    max_candidates: int = Form(default=6, alias="maxCandidates"),
+) -> LiveScanDetectResponseDTO:
+    label_list = _parse_live_detect_labels(labels)
+    if not label_list:
+        label_list = list(SCAN_LIVE_DEFAULT_LABELS)
+    max_candidates = max(1, min(max_candidates, 12))
+
+    suffix = Path(file.filename or "scan.jpg").suffix or ".jpg"
+    temp_image = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        temp_image.write(await file.read())
+        temp_image.close()
+        return await asyncio.to_thread(
+            _run_live_detect_scan,
+            Path(temp_image.name),
+            label_list,
+            max_candidates,
+        )
+    finally:
+        Path(temp_image.name).unlink(missing_ok=True)
 
 
 @app.get("/rooms")
@@ -212,8 +265,14 @@ async def upload_frame_bundle(
     room.frame_dir = data_dir
     room.frames = frames
     room.observations = _extract_observations(frames)
-
     room.scene_graph = build_scene_graph(room)
+    store.update(
+        room_id,
+        frame_dir=data_dir,
+        frames=frames,
+        observations=room.observations,
+        scene_graph=room.scene_graph,
+    )
 
     return FrameBundleAcceptedResponse(
         room_id=room_id,
@@ -232,6 +291,8 @@ async def reconstruct_room_endpoint(room_id: str) -> JobAcceptedResponse:
         raise HTTPException(404, "Room not found")
     if not room.frame_dir:
         raise HTTPException(400, "No frames uploaded")
+
+    store.update(room_id, reconstruction_status="queued", reconstruction_assets={})
 
     from serving.workers.reconstruct_room import reconstruct_room
 
@@ -391,6 +452,65 @@ def _extract_observations(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if isinstance(frame_observations, list):
             observations.extend(item for item in frame_observations if isinstance(item, dict))
     return observations
+
+
+def _parse_live_detect_labels(raw_labels: str | None) -> list[str]:
+    if raw_labels is None:
+        return []
+    labels = [label.strip() for label in raw_labels.split(",")]
+    return [label for label in labels if label]
+
+
+def _run_live_detect_scan(
+    image_path: Path,
+    label_list: list[str],
+    max_candidates: int,
+) -> LiveScanDetectResponseDTO:
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from open_vocab.grounding_dino.run_grounding import detect
+        from open_vocab.sam2.run_segmentation import segment
+    except ImportError as exc:
+        logger.warning("Live scan detection dependencies unavailable: %s", exc)
+        return LiveScanDetectResponseDTO(labels=label_list, detections=[])
+
+    try:
+        prompt = " . ".join(label_list)
+        detections = detect(
+            [image_path],
+            prompt,
+            box_threshold=0.18,
+            text_threshold=0.18,
+            max_prompt_variants=1,
+            max_tiles_per_frame=4,
+        )[:max_candidates]
+
+        if not detections:
+            return LiveScanDetectResponseDTO(labels=label_list, detections=[])
+
+        try:
+            image = np.array(Image.open(image_path).convert("RGB"))
+            masks = segment(image, [detection.bbox_xyxy_norm for detection in detections])
+        except Exception as exc:
+            logger.warning("Live scan mask refinement failed; continuing with boxes only: %s", exc)
+            masks = []
+
+        response_detections = [
+            LiveScanDetectionDTO(
+                id=str(uuid4()),
+                label=detection.label,
+                confidence=min(max(float(detection.confidence), 0.0), 1.0),
+                bbox_xyxy_norm=[float(value) for value in detection.bbox_xyxy_norm],
+                mask_available=index < len(masks) and getattr(masks[index], "mask", None) is not None,
+            )
+            for index, detection in enumerate(detections)
+        ]
+        return LiveScanDetectResponseDTO(labels=label_list, detections=response_detections)
+    except Exception as exc:
+        logger.warning("Live scan detection failed; returning no detections: %s", exc)
+        return LiveScanDetectResponseDTO(labels=label_list, detections=[])
 
 
 def _safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
