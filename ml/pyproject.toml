@@ -36,6 +36,19 @@ serving = [
     "python-multipart>=0.0.18",
     "uvicorn>=0.34.0",
 ]
+query-serving = [
+    "fastapi>=0.115.11",
+    "httpx>=0.28.1",
+    "numpy>=2.2.4",
+    "open-clip-torch>=2.31.0",
+    "pillow>=11.1.0",
+    "python-multipart>=0.0.18",
+    "torch>=2.6.0",
+    "torchvision>=0.21.0",
+    "transformers>=4.49.0",
+    "uvicorn>=0.34.0",
+    "faiss-cpu>=1.9.0",
+]
 retrieval = [
     "faiss-cpu>=1.9.0",
     "open-clip-torch>=2.31.0",

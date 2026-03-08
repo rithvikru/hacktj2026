@@ -11,3 +11,4 @@ xtool/
 .claude/
 *.kate-swp
 ml/data/
+data/

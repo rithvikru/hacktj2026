@@ -40,8 +40,9 @@ def detect(
     text_prompt: str,
     box_threshold: float = 0.25,
     text_threshold: float = 0.25,
+    max_prompt_variants: int | None = None,
+    max_tiles_per_frame: int | None = None,
 ) -> list[Detection]:
-    import torch
     from PIL import Image
 
     model, processor = _load_model()
@@ -57,7 +58,9 @@ def detect(
             continue
 
         width, height = image.size
-        prompt_variants = profile["prompt_variants"]
+        prompt_variants = list(profile["prompt_variants"])
+        if max_prompt_variants is not None:
+            prompt_variants = prompt_variants[:max_prompt_variants]
         full_threshold = min(box_threshold, profile["full_box_threshold"])
         tile_threshold = min(box_threshold, profile["tile_box_threshold"])
 
@@ -76,7 +79,10 @@ def detect(
             )
 
             if _should_tile(width, height, profile):
-                for tile_bounds in _iter_tiles(width, height, profile["tile_size"], profile["tile_overlap"]):
+                tiles = _iter_tiles(width, height, profile["tile_size"], profile["tile_overlap"])
+                if max_tiles_per_frame is not None:
+                    tiles = _limit_tiles(tiles, max_tiles_per_frame)
+                for tile_bounds in tiles:
                     tile_image = image.crop(tile_bounds)
                     tile_detections = _run_detection_pass(
                         image=tile_image,
@@ -103,9 +109,9 @@ def detect(
 
 
 def deduplicate_detections(detections: list[Detection], iou_threshold: float = 0.45) -> list[Detection]:
-    grouped: dict[tuple[str, str], list[Detection]] = {}
+    grouped: dict[str, list[Detection]] = {}
     for detection in detections:
-        key = (Path(detection.image_path).name, detection.label.strip().lower())
+        key = Path(detection.image_path).name
         grouped.setdefault(key, []).append(detection)
 
     merged: list[Detection] = []
@@ -200,6 +206,27 @@ def _iter_tiles(width: int, height: int, tile_size: int, overlap: float) -> list
     ]
 
 
+def _limit_tiles(
+    tiles: list[tuple[int, int, int, int]],
+    max_tiles_per_frame: int,
+) -> list[tuple[int, int, int, int]]:
+    if max_tiles_per_frame <= 0 or len(tiles) <= max_tiles_per_frame:
+        return tiles
+    if max_tiles_per_frame == 1:
+        return [tiles[0]]
+
+    stride = max((len(tiles) - 1) / max(max_tiles_per_frame - 1, 1), 1.0)
+    selected_indices = []
+    for index in range(max_tiles_per_frame):
+        candidate = round(index * stride)
+        candidate = min(candidate, len(tiles) - 1)
+        if not selected_indices or candidate != selected_indices[-1]:
+            selected_indices.append(candidate)
+    if selected_indices[-1] != len(tiles) - 1:
+        selected_indices[-1] = len(tiles) - 1
+    return [tiles[index] for index in selected_indices]
+
+
 def _tile_starts(length: int, tile_size: int, step: int) -> list[int]:
     if length <= tile_size:
         return [0]
@@ -220,7 +247,9 @@ def _should_tile(width: int, height: int, profile: dict[str, object]) -> bool:
 
 def _prompt_profile(text_prompt: str) -> dict[str, object]:
     prompt = text_prompt.strip().lower()
-    prompt_variants = {prompt}
+    prompt_variants: list[str] = []
+    seen_variants: set[str] = set()
+    _append_prompt_variant(prompt_variants, seen_variants, prompt)
     force_tiles = False
     full_box_threshold = 0.25
     tile_box_threshold = 0.18
@@ -250,7 +279,8 @@ def _prompt_profile(text_prompt: str) -> dict[str, object]:
 
     for token, variants in alias_map.items():
         if token in prompt:
-            prompt_variants |= variants
+            for variant in variants:
+                _append_prompt_variant(prompt_variants, seen_variants, variant)
 
     small_object_tokens = {
         "phone",
@@ -280,13 +310,21 @@ def _prompt_profile(text_prompt: str) -> dict[str, object]:
         tile_overlap = 0.35
 
     return {
-        "prompt_variants": sorted(prompt_variants),
+        "prompt_variants": prompt_variants,
         "force_tiles": force_tiles,
         "full_box_threshold": full_box_threshold,
         "tile_box_threshold": tile_box_threshold,
         "tile_size": tile_size,
         "tile_overlap": tile_overlap,
     }
+
+
+def _append_prompt_variant(prompt_variants: list[str], seen_variants: set[str], variant: str) -> None:
+    normalized = variant.strip().lower()
+    if not normalized or normalized in seen_variants:
+        return
+    prompt_variants.append(normalized)
+    seen_variants.add(normalized)
 
 
 def _iou(box_a: list[float], box_b: list[float]) -> float:

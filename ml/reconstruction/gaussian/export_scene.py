@@ -58,7 +58,6 @@ def _train_with_gsplat(
 ) -> Path | None:
     """Minimal training loop using gsplat library."""
     import torch
-    from gsplat import rasterization
 
     # Load point cloud PLY
     points, colors = _load_ply_points(pointcloud_path)

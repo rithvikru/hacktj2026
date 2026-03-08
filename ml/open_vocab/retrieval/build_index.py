@@ -20,6 +20,8 @@ class RetrievalResult:
 _clip_model = None
 _clip_preprocess = None
 _clip_tokenizer = None
+_embedding_cache: dict[tuple[str, str, tuple[int, int, int, int]], np.ndarray] = {}
+_EMBEDDING_CACHE_LIMIT = 20_000
 
 
 def _load_clip():
@@ -47,7 +49,9 @@ class _DetectionMeta:
 
 
 def build_index(
-    detections: list, images: dict[str, np.ndarray]
+    detections: list,
+    images: dict[str, np.ndarray],
+    cache_namespace: str | None = None,
 ) -> tuple[object, np.ndarray, list[_DetectionMeta]]:
     """Build FAISS index from detection crops using OpenCLIP.
 
@@ -73,19 +77,24 @@ def build_index(
         if img is None:
             continue
 
-        h, w = img.shape[:2]
-        crop = _crop_with_context(img, det.bbox_xyxy_norm)
+        crop, crop_bounds = _crop_with_context(img, det.bbox_xyxy_norm)
         if crop.size == 0:
             continue
 
-        pil_crop = Image.fromarray(crop)
-        tensor = preprocess(pil_crop).unsqueeze(0).to(device)
+        cache_key = _embedding_cache_key(cache_namespace, det.image_path, crop_bounds)
+        cached_embedding = _embedding_cache.get(cache_key)
+        if cached_embedding is None:
+            pil_crop = Image.fromarray(crop)
+            tensor = preprocess(pil_crop).unsqueeze(0).to(device)
 
-        with torch.no_grad():
-            feat = model.encode_image(tensor)
-            feat = feat / feat.norm(dim=-1, keepdim=True)
+            with torch.no_grad():
+                feat = model.encode_image(tensor)
+                feat = feat / feat.norm(dim=-1, keepdim=True)
 
-        embeddings.append(feat.cpu().numpy().flatten())
+            cached_embedding = feat.cpu().numpy().flatten().astype(np.float32)
+            _store_embedding(cache_key, cached_embedding)
+
+        embeddings.append(cached_embedding)
         metadata.append(
             _DetectionMeta(
                 idx=i, label=det.label, bbox_xyxy_norm=det.bbox_xyxy_norm, image_path=det.image_path
@@ -152,7 +161,10 @@ def query_index(
     return results
 
 
-def _crop_with_context(image: np.ndarray, bbox_xyxy_norm: list[float]) -> np.ndarray:
+def _crop_with_context(
+    image: np.ndarray,
+    bbox_xyxy_norm: list[float],
+) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     h, w = image.shape[:2]
     x1, y1, x2, y2 = bbox_xyxy_norm
 
@@ -172,4 +184,21 @@ def _crop_with_context(image: np.ndarray, bbox_xyxy_norm: list[float]) -> np.nda
         px2 = min(int(x2 * w), w)
         py2 = min(int(y2 * h), h)
 
-    return image[py1:py2, px1:px2]
+    return image[py1:py2, px1:px2], (px1, py1, px2, py2)
+
+
+def _embedding_cache_key(
+    namespace: str | None,
+    image_path: str,
+    crop_bounds: tuple[int, int, int, int],
+) -> tuple[str, str, tuple[int, int, int, int]]:
+    return (namespace or "", image_path, crop_bounds)
+
+
+def _store_embedding(
+    cache_key: tuple[str, str, tuple[int, int, int, int]],
+    embedding: np.ndarray,
+) -> None:
+    if len(_embedding_cache) >= _EMBEDDING_CACHE_LIMIT:
+        _embedding_cache.clear()
+    _embedding_cache[cache_key] = embedding

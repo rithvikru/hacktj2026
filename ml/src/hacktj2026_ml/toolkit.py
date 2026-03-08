@@ -20,7 +20,10 @@ from hacktj2026_ml.query_contracts import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OPEN_VOCAB_FRAME_LIMIT = 24
+INTERACTIVE_OPEN_VOCAB_FRAME_LIMIT = 8
+HYBRID_OPEN_VOCAB_FRAME_LIMIT = 12
+QUALITY_OPEN_VOCAB_FRAME_LIMIT = 24
+OPEN_VOCAB_CLIP_PREFILTER_MULTIPLIER = 3
 
 
 class QueryToolkit(Protocol):
@@ -219,11 +222,13 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         logger.info("No frames available for room %s", request.room_id)
         return []
 
+    runtime = _open_vocab_runtime_settings(request)
+
     image_paths = _select_room_image_paths(
         room_frame_dir=room.frame_dir,
         frames=room.frames,
         frame_refs=request.frame_refs,
-        frame_limit=DEFAULT_OPEN_VOCAB_FRAME_LIMIT,
+        frame_limit=runtime["frame_limit"],
     )
 
     if not image_paths:
@@ -236,9 +241,15 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         return []
 
     # 1. Grounding DINO detection
-    detections = detect(image_paths, request.target_phrase)
+    detections = detect(
+        image_paths,
+        request.target_phrase,
+        max_prompt_variants=runtime["max_prompt_variants"],
+        max_tiles_per_frame=runtime["max_tiles_per_frame"],
+    )
     if not detections:
         return []
+    detections = detections[: runtime["detection_limit"]]
 
     # 2. Load images as numpy arrays for downstream steps
     images: dict[str, np.ndarray] = {}
@@ -249,10 +260,55 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
             except Exception:
                 pass
 
-    # 3. SAM 2 mask refinement, keyed back to the original detection index.
+    # 3. CLIP reranking via cached crop embeddings.
+    reranked_scores: dict[int, float] = {}
+    try:
+        index, embeddings, metadata = build_index(
+            detections,
+            images,
+            cache_namespace=request.room_id,
+        )
+        reranked = query_index(
+            index,
+            embeddings,
+            metadata,
+            request.target_phrase,
+            top_k=min(
+                len(detections),
+                max(request.max_candidates * OPEN_VOCAB_CLIP_PREFILTER_MULTIPLIER, runtime["sam2_top_k"]),
+            ),
+        )
+        for item in reranked:
+            reranked_scores[item.detection_idx] = item.similarity
+    except Exception as exc:
+        logger.warning("CLIP reranking failed, using raw detections: %s", exc)
+        reranked = None
+
+    selected_detections = _select_open_vocab_candidates(
+        detections=detections,
+        reranked=reranked,
+        sam2_top_k=runtime["sam2_top_k"],
+        fallback_top_k=runtime["fallback_top_k"],
+    )
+    if not selected_detections:
+        return []
+
+    remapped_scores = {
+        idx: reranked_scores.get(original_idx)
+        for idx, original_idx in enumerate(selected_detections.original_indices)
+        if original_idx in reranked_scores
+    }
+
+    # 4. SAM 2 mask refinement only for the top candidates.
     masks_by_detection_idx: dict[int, object] = {}
     for img_path, img_arr in images.items():
-        dets_for_img = [(idx, det) for idx, det in enumerate(detections) if det.image_path == img_path]
+        dets_for_img = [
+            (idx, det)
+            for idx, det in enumerate(selected_detections.detections)
+            if det.image_path == img_path
+        ]
+        if not dets_for_img:
+            continue
         bboxes = [det.bbox_xyxy_norm for _, det in dets_for_img]
         try:
             masks = segment(img_arr, bboxes)
@@ -261,22 +317,11 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
         except Exception:
             pass  # non-critical
 
-    # 4. CLIP reranking via FAISS
-    reranked_scores: dict[int, float] = {}
-    try:
-        index, embeddings, metadata = build_index(detections, images)
-        reranked = query_index(index, embeddings, metadata, request.target_phrase, top_k=request.max_candidates)
-        for item in reranked:
-            reranked_scores[item.detection_idx] = item.similarity
-    except Exception as exc:
-        logger.warning("CLIP reranking failed, using raw detections: %s", exc)
-        reranked = None
-
     # 5. Fuse detections into stable 3D candidates, inspired by Open3DIS-style multi-view lifting.
     fused_candidates = fuse_grounded_detections(
-        detections=detections,
+        detections=selected_detections.detections,
         masks_by_detection_idx=masks_by_detection_idx,
-        reranked_scores=reranked_scores,
+        reranked_scores=remapped_scores,
         room=room,
         images=images,
         max_candidates=request.max_candidates,
@@ -287,35 +332,37 @@ def _run_open_vocab_pipeline(request: OpenVocabSearchRequest) -> list[OpenVocabC
     # 6. Fallback to per-frame raw candidates if fused grounding cannot be built.
     candidates: list[OpenVocabCandidateDTO] = []
     if reranked:
-        for rr in reranked:
+        for rr in reranked[: request.max_candidates]:
+            if rr.detection_idx >= len(detections):
+                continue
             det = detections[rr.detection_idx]
             world_t16 = _try_backproject(det, room, images)
             candidates.append(
                 OpenVocabCandidateDTO(
                     id=str(uuid4()),
-                        confidence=min(max(rr.similarity, 0.0), 1.0),
-                        bbox_xyxy_norm=rr.bbox_xyxy_norm,
-                        mask_ref=None,
-                        frame_id=Path(rr.image_path).name,
-                        world_transform16=world_t16,
-                        evidence=["backendOpenVocab", "groundingDINO", "clipReranked", "singleViewFallback"],
-                        explanation=f"Detected '{rr.label}' with CLIP similarity {rr.similarity:.2f}.",
-                    )
+                    confidence=min(max(rr.similarity, 0.0), 1.0),
+                    bbox_xyxy_norm=rr.bbox_xyxy_norm,
+                    mask_ref=None,
+                    frame_id=Path(rr.image_path).name,
+                    world_transform16=world_t16,
+                    evidence=["backendOpenVocab", "groundingDINO", "clipReranked", "singleViewFallback"],
+                    explanation=f"Detected '{rr.label}' with CLIP similarity {rr.similarity:.2f}.",
+                )
             )
     else:
-        for det in detections[: request.max_candidates]:
+        for det in detections[: min(request.max_candidates, runtime["fallback_top_k"])]:
             world_t16 = _try_backproject(det, room, images)
             candidates.append(
                 OpenVocabCandidateDTO(
                     id=str(uuid4()),
-                        confidence=min(max(det.confidence, 0.0), 1.0),
-                        bbox_xyxy_norm=det.bbox_xyxy_norm,
-                        mask_ref=None,
-                        frame_id=Path(det.image_path).name,
-                        world_transform16=world_t16,
-                        evidence=["backendOpenVocab", "groundingDINO", "singleViewFallback"],
-                        explanation=f"Detected '{det.label}' with confidence {det.confidence:.2f}.",
-                    )
+                    confidence=min(max(det.confidence, 0.0), 1.0),
+                    bbox_xyxy_norm=det.bbox_xyxy_norm,
+                    mask_ref=None,
+                    frame_id=Path(det.image_path).name,
+                    world_transform16=world_t16,
+                    evidence=["backendOpenVocab", "groundingDINO", "singleViewFallback"],
+                    explanation=f"Detected '{det.label}' with confidence {det.confidence:.2f}.",
+                )
             )
 
     return candidates
@@ -445,6 +492,78 @@ def _dedupe_existing_paths(paths) -> list[Path]:
         deduped.append(path)
         seen.add(path)
     return deduped
+
+
+@dataclass(slots=True)
+class SelectedDetections:
+    detections: list
+    original_indices: list[int]
+
+
+def _select_open_vocab_candidates(
+    *,
+    detections: list,
+    reranked,
+    sam2_top_k: int,
+    fallback_top_k: int,
+) -> SelectedDetections:
+    if reranked:
+        ranked_indices: list[int] = []
+        for item in reranked:
+            if item.detection_idx >= len(detections) or item.detection_idx in ranked_indices:
+                continue
+            ranked_indices.append(item.detection_idx)
+            if len(ranked_indices) >= sam2_top_k:
+                break
+        if ranked_indices:
+            return SelectedDetections(
+                detections=[detections[idx] for idx in ranked_indices],
+                original_indices=ranked_indices,
+            )
+
+    fallback_indices = list(range(min(len(detections), fallback_top_k)))
+    return SelectedDetections(
+        detections=[detections[idx] for idx in fallback_indices],
+        original_indices=fallback_indices,
+    )
+
+
+def _open_vocab_runtime_settings(request: OpenVocabSearchRequest) -> dict[str, int]:
+    if request.frame_selection_mode == "live_priority":
+        return {
+            "frame_limit": INTERACTIVE_OPEN_VOCAB_FRAME_LIMIT,
+            "max_prompt_variants": 2,
+            "max_tiles_per_frame": 4,
+            "detection_limit": 48,
+            "sam2_top_k": 6,
+            "fallback_top_k": 10,
+        }
+    if request.frame_selection_mode == "hybrid":
+        return {
+            "frame_limit": HYBRID_OPEN_VOCAB_FRAME_LIMIT,
+            "max_prompt_variants": 3,
+            "max_tiles_per_frame": 6,
+            "detection_limit": 72,
+            "sam2_top_k": 8,
+            "fallback_top_k": 12,
+        }
+    if request.frame_selection_mode == "saved_priority":
+        return {
+            "frame_limit": QUALITY_OPEN_VOCAB_FRAME_LIMIT,
+            "max_prompt_variants": 4,
+            "max_tiles_per_frame": 8,
+            "detection_limit": 96,
+            "sam2_top_k": 12,
+            "fallback_top_k": 16,
+        }
+    return {
+        "frame_limit": min(QUALITY_OPEN_VOCAB_FRAME_LIMIT, max(len(request.frame_refs), 1)),
+        "max_prompt_variants": 3,
+        "max_tiles_per_frame": 6,
+        "detection_limit": 72,
+        "sam2_top_k": 8,
+        "fallback_top_k": 12,
+    }
 
 
 def _sample_depth_at_bbox_center(

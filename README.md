@@ -17,3 +17,10 @@ Device backend:
 
 - `./scripts/start-device-backend.sh`
 - `./scripts/print-device-backend-url.sh`
+
+SAM2 quality mode:
+
+- The backend launcher auto-enables SAM2 if it finds:
+  - repo: `/Users/rithvikr/projects/sam2`
+  - checkpoint: `/Users/rithvikr/models/sam2/sam2.1_hiera_small.pt`
+- You can override those with `SAM2_REPO_DIR`, `SAM2_MODEL_DIR`, `SAM2_CONFIG_PATH`, and `SAM2_CHECKPOINT_PATH`.

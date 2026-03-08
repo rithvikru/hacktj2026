@@ -685,6 +685,19 @@ dev = [
 export = [
     { name = "coremltools" },
 ]
+query-serving = [
+    { name = "faiss-cpu" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "numpy" },
+    { name = "open-clip-torch" },
+    { name = "pillow" },
+    { name = "python-multipart" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "transformers" },
+    { name = "uvicorn" },
+]
 reconstruction = [
     { name = "open3d" },
 ]
@@ -725,6 +738,19 @@ dev = [
     { name = "ruff", specifier = ">=0.9.9" },
 ]
 export = [{ name = "coremltools", specifier = ">=8.1" }]
+query-serving = [
+    { name = "faiss-cpu", specifier = ">=1.9.0" },
+    { name = "fastapi", specifier = ">=0.115.11" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "numpy", specifier = ">=2.2.4" },
+    { name = "open-clip-torch", specifier = ">=2.31.0" },
+    { name = "pillow", specifier = ">=11.1.0" },
+    { name = "python-multipart", specifier = ">=0.0.18" },
+    { name = "torch", specifier = ">=2.6.0" },
+    { name = "torchvision", specifier = ">=0.21.0" },
+    { name = "transformers", specifier = ">=4.49.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+]
 reconstruction = [{ name = "open3d", specifier = ">=0.18.0" }]
 retrieval = [
     { name = "faiss-cpu", specifier = ">=1.9.0" },

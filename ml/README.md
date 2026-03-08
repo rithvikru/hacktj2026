@@ -17,6 +17,7 @@ Add the groups you need for a given track:
 uv sync --group dev --group training
 uv sync --group dev --group training --group export
 uv sync --group dev --group serving
+uv sync --group dev --group query-serving
 uv sync --group dev --group retrieval --group vision
 ```
 
@@ -33,8 +34,15 @@ uv run python open_vocab/grounding_dino/run_grounding.py --prompt "wallet"
 uv run python reconstruction/da3/run_pipeline.py --room-id demo-room --frame-bundle ../docs
 uv run python hidden_inference/rules/rank.py --query-label wallet
 uv run --group serving python serving/tools/export_contract_schemas.py
-uv run uvicorn serving.api.app:app --app-dir . --reload
+uv run --group query-serving uvicorn serving.api.app:app --app-dir . --reload
 ```
+
+Open-vocab query serving:
+
+- Use `uv sync --group dev --group query-serving` for the backend that serves natural-language visual search.
+- `SAM 2` mask refinement is optional and requires explicit local setup.
+- Set `SAM2_CONFIG_PATH` and `SAM2_CHECKPOINT_PATH` before starting the server to enable it.
+- If those variables are missing, the backend will fall back to bbox-only masks instead of failing startup.
 
 Chat layer:
 
