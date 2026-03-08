@@ -8,7 +8,7 @@ struct RootTabView: View {
 
         TabView(selection: $nav.selectedTab) {
             HomeStack()
-                .tabItem { Label("Spaces", systemImage: "square.grid.2x2.fill") }
+                .tabItem { Label("Home", systemImage: "eyeglasses") }
                 .tag(0)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }

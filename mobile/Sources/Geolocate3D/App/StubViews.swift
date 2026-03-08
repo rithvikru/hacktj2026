@@ -166,7 +166,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Section("Wearables") {
+                Section("Wearables — Config") {
                     Picker("Wearable Mode", selection: $wearableBridgeMode) {
                         ForEach(WearableBridgeMode.allCases) { mode in
                             Text(mode.displayName).tag(mode.rawValue)
@@ -179,41 +179,44 @@ struct SettingsView: View {
                     LabeledContent("Active Home") {
                         Text(activeHomeID.isEmpty ? "Not created" : String(activeHomeID.prefix(8)))
                     }
-                    LabeledContent("Mode") {
-                        Text(WearableBridgeMode.fromStoredValue(wearableBridgeMode).displayName)
-                    }
-                    LabeledContent("Session ID") {
-                        Text(wearableStreamManager.activeSessionID.map { String($0.prefix(8)) } ?? "None")
-                    }
+                }
+                Section("Wearables — Device") {
                     LabeledContent("Registration") {
                         Text(registrationLabel)
+                            .foregroundStyle(registrationColor)
                     }
-                    LabeledContent("Streaming") {
-                        Text(streamLabel)
+                    if let deviceName = wearableStreamManager.connectedDeviceName {
+                        LabeledContent("Device") {
+                            Text(deviceName)
+                        }
                     }
-                    LabeledContent("Backend Status") {
-                        Text(wearableStreamManager.latestBackendSessionStatus ?? "Unknown")
-                    }
-                    LabeledContent("Local Frames") {
-                        Text("\(wearableStreamManager.localPersistedFrameCount)")
-                    }
-                    LabeledContent("Backend Frames") {
-                        Text("\(wearableStreamManager.backendFrameCount)")
-                    }
-                    if let latestSessionStoragePath = wearableStreamManager.latestSessionStoragePath {
-                        LabeledContent("Storage Path") {
-                            Text(latestSessionStoragePath)
-                                .lineLimit(2)
+                    if let deviceType = wearableStreamManager.connectedDeviceType {
+                        LabeledContent("Type") {
+                            Text(deviceType)
                                 .font(.caption)
                         }
                     }
-                    if let lastErrorMessage = wearableStreamManager.lastErrorMessage {
-                        LabeledContent("Last Error") {
-                            Text(lastErrorMessage)
-                                .foregroundStyle(.red)
-                                .lineLimit(3)
-                        }
+                    LabeledContent("Streaming") {
+                        Text(streamLabel)
+                            .foregroundStyle(streamColor)
                     }
+                    if let lastErrorMessage = wearableStreamManager.lastErrorMessage {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Last Error")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                            Text(lastErrorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red.opacity(0.85))
+                        }
+                        .padding(.vertical, 4)
+                        Button("Clear Error") {
+                            wearableStreamManager.lastErrorMessage = nil
+                        }
+                        .font(.caption)
+                    }
+                }
+                Section("Wearables — Actions") {
                     Button("Create Active Home") {
                         Task {
                             do {
@@ -221,7 +224,7 @@ struct SettingsView: View {
                                     activeHomeID = try await backendClient.createHome(name: "My Home")
                                 }
                             } catch {
-                                print("Failed to create home: \(error.localizedDescription)")
+                                wearableStreamManager.lastErrorMessage = "Failed to create home: \(error.localizedDescription)"
                             }
                         }
                     }
@@ -232,6 +235,9 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(isRegisterDisabled)
+                    Button("Sync SDK State") {
+                        wearableStreamManager.syncBridgeState()
+                    }
                     Button("Start Wearable Stream") {
                         Task {
                             await wearableStreamManager.startStreaming(homeID: activeHomeID)
@@ -250,6 +256,27 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(wearableStreamManager.activeSessionID == nil)
+                }
+                Section("Wearables — Session") {
+                    LabeledContent("Session ID") {
+                        Text(wearableStreamManager.activeSessionID.map { String($0.prefix(8)) } ?? "None")
+                    }
+                    LabeledContent("Backend Status") {
+                        Text(wearableStreamManager.latestBackendSessionStatus ?? "—")
+                    }
+                    LabeledContent("Local Frames") {
+                        Text("\(wearableStreamManager.localPersistedFrameCount)")
+                    }
+                    LabeledContent("Backend Frames") {
+                        Text("\(wearableStreamManager.backendFrameCount)")
+                    }
+                    if let latestSessionStoragePath = wearableStreamManager.latestSessionStoragePath {
+                        LabeledContent("Storage Path") {
+                            Text(latestSessionStoragePath)
+                                .lineLimit(2)
+                                .font(.caption)
+                        }
+                    }
                 }
                 Section("Detection") {
                     Text("Model Selection")
@@ -334,6 +361,25 @@ struct SettingsView: View {
             return true
         default:
             return false
+        }
+    }
+
+    private var registrationColor: Color {
+        switch wearableStreamManager.registrationState {
+        case .registered: return .green
+        case .registering: return .orange
+        case .failed: return .red
+        default: return .secondary
+        }
+    }
+
+    private var streamColor: Color {
+        switch wearableStreamManager.streamState {
+        case .streaming: return .green
+        case .connecting, .reconnecting: return .orange
+        case .degraded: return .yellow
+        case .failed: return .red
+        default: return .secondary
         }
     }
 }

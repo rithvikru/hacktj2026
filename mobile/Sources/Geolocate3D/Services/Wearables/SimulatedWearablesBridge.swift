@@ -30,8 +30,9 @@ final class SimulatedWearablesBridge: WearablesBridge {
         onStateChange: @escaping @Sendable (WearableStreamState) -> Void
     ) async throws {
         guard case .registered = registrationState else {
-            registrationState = .failed(WearablesBridgeError.registrationFailed.localizedDescription)
-            throw WearablesBridgeError.registrationFailed
+            let err = WearablesBridgeError.registrationFailed("Simulated bridge not registered")
+            registrationState = .failed(err.localizedDescription)
+            throw err
         }
 
         streamTask?.cancel()

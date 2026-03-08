@@ -7,7 +7,7 @@ struct LayerToggleBar: View {
     @Binding var showDense: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 4) {
             LayerToggleButton(icon: "square.stack.3d.up", label: "Scaffold",
                               isOn: $showScaffold)
             LayerToggleButton(icon: "cube", label: "Objects",
@@ -17,10 +17,13 @@ struct LayerToggleBar: View {
             LayerToggleButton(icon: "cloud.fill", label: "Dense",
                               isOn: $showDense)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5))
+        .padding(6)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.15), lineWidth: 0.5)
+        }
+        .padding(.horizontal, 24)
     }
 }
 
@@ -42,8 +45,18 @@ private struct LayerToggleButton: View {
                 Text(label)
                     .font(SpatialFont.dataSmall)
             }
-            .foregroundStyle(isOn ? .spatialCyan : .dimLabel)
-            .frame(width: 56, height: 44)
+            .foregroundStyle(isOn ? .white : .dimLabel)
+            .frame(width: 64, height: 48)
+            .background {
+                if isOn {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.spatialCyan.opacity(0.2))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.spatialCyan.opacity(0.4), lineWidth: 0.5)
+                        }
+                }
+            }
         }
     }
 }

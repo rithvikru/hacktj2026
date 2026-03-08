@@ -15,6 +15,7 @@ extension Color {
     static let glassWhite       = Color.white.opacity(0.06)
     static let glassEdge        = Color.white.opacity(0.12)
     static let dimLabel         = Color.white.opacity(0.5)
+    static let zinc900          = Color(red: 0.09, green: 0.09, blue: 0.10)
 }
 
 extension ShapeStyle where Self == Color {

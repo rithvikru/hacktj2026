@@ -16,10 +16,15 @@ final class WearableStreamSessionManager {
     var latestBackendSessionStatus: String?
     var lastErrorMessage: String?
 
+    var connectedDeviceName: String?
+    var connectedDeviceType: String?
+
     private var bridge: WearablesBridge
     private let persistence = WearablePersistenceService()
     private var sampler = WearableFrameSampler(targetFPS: 1.0)
     private weak var backendClient: BackendClient?
+
+    private var bridgeStateSyncTask: Task<Void, Never>?
 
     init(bridgeMode: WearableBridgeMode = .meta) {
         self.bridgeMode = bridgeMode
@@ -36,6 +41,8 @@ final class WearableStreamSessionManager {
             lastErrorMessage = "Stop streaming before switching wearable mode."
             return
         }
+        bridgeStateSyncTask?.cancel()
+        bridgeStateSyncTask = nil
         bridgeMode = mode
         bridge = Self.makeBridge(for: mode)
         registrationState = .unconfigured
@@ -47,35 +54,50 @@ final class WearableStreamSessionManager {
         latestSessionStoragePath = nil
         latestBackendSessionStatus = nil
         lastErrorMessage = nil
+        connectedDeviceName = nil
+        connectedDeviceType = nil
     }
 
     func configureIfNeeded() {
         guard case .unconfigured = registrationState else { return }
         do {
             try bridge.configure()
-            registrationState = bridge.registrationState
+            syncBridgeState()
+            startBridgeStateSync()
         } catch {
-            let detail = "\(String(describing: error)) | \(error.localizedDescription)"
-            registrationState = .failed(detail)
-            lastErrorMessage = detail
+            registrationState = .failed(error.localizedDescription)
+            lastErrorMessage = error.localizedDescription
         }
     }
 
     func beginRegistration() async {
+
+        if case .unconfigured = registrationState {
+            configureIfNeeded()
+        }
+        if case .failed = registrationState {
+
+            registrationState = .unconfigured
+            configureIfNeeded()
+        }
+
+        if case .failed = registrationState {
+            return
+        }
         do {
             try await bridge.beginRegistration()
-            registrationState = bridge.registrationState
+            syncBridgeState()
         } catch {
-            let detail = "\(String(describing: error)) | \(error.localizedDescription)"
-            registrationState = .failed(detail)
-            lastErrorMessage = detail
+            registrationState = .failed(error.localizedDescription)
+            lastErrorMessage = error.localizedDescription
         }
     }
 
     func handleOpenURL(_ url: URL) async {
         do {
             _ = try await bridge.handleOpenURL(url)
-            registrationState = bridge.registrationState
+            syncBridgeState()
+            lastErrorMessage = nil
         } catch {
             lastErrorMessage = error.localizedDescription
             registrationState = .failed(error.localizedDescription)
@@ -95,10 +117,18 @@ final class WearableStreamSessionManager {
             return
         }
 
+        if case .registrationRequired = registrationState {
+            await beginRegistration()
+            if case .failed(let message) = registrationState {
+                lastErrorMessage = message
+                return
+            }
+        }
+
         do {
             let session = try await backendClient.createWearableSession(
                 homeID: homeID,
-                deviceName: "Ray-Ban Meta",
+                deviceName: connectedDeviceName ?? "Ray-Ban Meta",
                 source: "rayban_meta",
                 samplingFPS: sampler.targetFPS
             )
@@ -106,7 +136,7 @@ final class WearableStreamSessionManager {
             let summary = try persistence.initializeSessionSummary(
                 sessionID: session.sessionID,
                 homeID: homeID,
-                deviceName: session.deviceName ?? "Ray-Ban Meta"
+                deviceName: session.deviceName ?? connectedDeviceName ?? "Ray-Ban Meta"
             )
             activeHomeID = homeID
             acceptedFrameCount = session.frameCount
@@ -166,6 +196,26 @@ final class WearableStreamSessionManager {
         }
     }
 
+    func syncBridgeState() {
+        registrationState = bridge.registrationState
+        streamState = bridge.streamState
+        if let metaBridge = bridge as? MetaWearablesBridge {
+            connectedDeviceName = metaBridge.connectedDeviceName
+            connectedDeviceType = metaBridge.connectedDeviceType
+        }
+    }
+
+    private func startBridgeStateSync() {
+        bridgeStateSyncTask?.cancel()
+        bridgeStateSyncTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self else { return }
+                self.syncBridgeState()
+            }
+        }
+    }
+
     private func handleCapturedFrame(_ frame: WearableCapturedFrame, forcedPlaceHint: String?) async {
         guard let backendClient, let sessionID = activeSessionID, let homeID = activeHomeID else { return }
         guard sampler.shouldSample(at: frame.timestamp, reason: frame.sampleReason) else { return }
@@ -215,7 +265,7 @@ final class WearableStreamSessionManager {
         }
     }
 
-    private var isStreamingActive: Bool {
+    var isStreamingActive: Bool {
         switch streamState {
         case .connecting, .streaming, .degraded, .reconnecting, .paused:
             return true

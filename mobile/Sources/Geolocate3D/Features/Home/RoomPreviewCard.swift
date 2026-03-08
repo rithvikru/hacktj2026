@@ -2,23 +2,43 @@ import SwiftUI
 
 struct RoomPreviewCard: View {
     let room: RoomRecord
+    var onSearch: () -> Void = {}
+    var onQuery: () -> Void = {}
+    var onTwin: () -> Void = {}
+    var onDelete: () -> Void = {}
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
 
-            if let image = room.previewImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
+            ZStack(alignment: .topTrailing) {
+                if let image = room.previewImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 180)
+                        .clipped()
+                } else {
+                    LinearGradient(
+                        colors: [.indigo.opacity(0.3), .spaceBlack],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .frame(height: 180)
+                }
+
                 LinearGradient(
-                    colors: [.indigo.opacity(0.3), .spaceBlack],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    colors: [.clear, .black.opacity(0.6)],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
+                .frame(height: 180)
+
+                StatusChip(status: room.reconstructionStatus.rawValue)
+                    .padding(12)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
+
                 HStack {
                     Text(room.name)
                         .font(SpatialFont.title2)
@@ -32,18 +52,27 @@ struct RoomPreviewCard: View {
                         .background(.white.opacity(0.1), in: Capsule())
                 }
 
-                HStack {
-                    Text(room.updatedAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(SpatialFont.caption)
-                        .foregroundStyle(.dimLabel)
+                Text(room.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(SpatialFont.caption)
+                    .foregroundStyle(.dimLabel)
+
+                HStack(spacing: 8) {
+                    ActionPill(icon: "arkit", label: "Search", action: onSearch)
+                    ActionPill(icon: "text.magnifyingglass", label: "Query", action: onQuery)
+                    ActionPill(icon: "cube.transparent", label: "Twin", action: onTwin)
                     Spacer()
-                    StatusChip(status: room.reconstructionStatus.rawValue)
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.dimLabel)
+                            .frame(width: 36, height: 36)
+                            .background(.white.opacity(0.06), in: Circle())
+                    }
                 }
             }
-            .padding(20)
+            .padding(16)
             .background(.ultraThinMaterial)
             .overlay(alignment: .top) {
-
                 Rectangle()
                     .frame(height: 1)
                     .foregroundStyle(
@@ -55,7 +84,6 @@ struct RoomPreviewCard: View {
                     )
             }
         }
-        .frame(height: 260)
         .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 32, style: .continuous)
@@ -69,5 +97,29 @@ struct RoomPreviewCard: View {
                 )
         }
         .shadow(color: .black.opacity(0.4), radius: 30, y: 15)
+    }
+}
+
+private struct ActionPill: View {
+    let icon: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(label)
+                    .font(SpatialFont.caption)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.08), in: Capsule())
+            .overlay {
+                Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5)
+            }
+        }
     }
 }

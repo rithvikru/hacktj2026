@@ -50,13 +50,13 @@
     </array>
     <key>UIBackgroundModes</key>
     <array>
-        <string>bluetooth-peripheral</string>
+        <string>bluetooth-central</string>
         <string>external-accessory</string>
     </array>
     <key>MWDAT</key>
     <dict>
         <key>AppLinkURLScheme</key>
-        <string>geolocate3d://</string>
+        <string>geolocate3d</string>
         <key>MetaAppID</key>
         <string>1822159831753014</string>
         <key>ClientToken</key>
