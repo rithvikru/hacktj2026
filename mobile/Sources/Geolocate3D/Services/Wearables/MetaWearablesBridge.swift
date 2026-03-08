@@ -205,8 +205,15 @@ final class MetaWearablesBridge: WearablesBridge {
         }
         stateListeners.append(stateToken)
 
+        var droppedFrameCount = 0
         let frameToken = session.videoFramePublisher.listen { frame in
-            guard let image = frame.makeUIImage() else { return }
+            guard let image = frame.makeUIImage() else {
+                droppedFrameCount += 1
+                if droppedFrameCount <= 5 || droppedFrameCount % 50 == 0 {
+                    NSLog("[MWDAT] frame.makeUIImage() returned nil (dropped: %d)", droppedFrameCount)
+                }
+                return
+            }
             let captured = WearableCapturedFrame(
                 image: image,
                 placeHint: nil,
@@ -223,9 +230,16 @@ final class MetaWearablesBridge: WearablesBridge {
             guard let self else { return }
             Task { @MainActor in
                 let msg = self.describeStreamSessionError(error)
-                NSLog("[MWDAT] stream error: %@", msg)
-                self.streamState = .failed(msg)
-                onStateChange(.failed(msg))
+                let isFatal = self.isFatalStreamError(error)
+                if isFatal {
+                    NSLog("[MWDAT] FATAL stream error: %@", msg)
+                    self.streamState = .failed(msg)
+                    onStateChange(.failed(msg))
+                } else {
+                    NSLog("[MWDAT] transient stream error (continuing): %@", msg)
+                    self.streamState = .degraded
+                    onStateChange(.degraded)
+                }
             }
         }
         stateListeners.append(errorToken)
@@ -417,6 +431,18 @@ final class MetaWearablesBridge: WearablesBridge {
     }
 
     #if canImport(MWDATCamera)
+
+    private func isFatalStreamError(_ error: StreamSessionError) -> Bool {
+        switch error {
+        case .permissionDenied, .hingesClosed, .deviceNotFound, .deviceNotConnected:
+            return true
+        case .timeout, .videoStreamingError, .audioStreamingError, .internalError:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
     private func mapStreamSessionState(_ state: StreamSessionState) -> WearableStreamState {
         switch state {
         case .stopping:

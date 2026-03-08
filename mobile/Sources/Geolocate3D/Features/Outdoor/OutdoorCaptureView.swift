@@ -4,6 +4,7 @@ struct OutdoorCaptureView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(LocationService.self) private var locationService
     @Environment(OutdoorSessionStore.self) private var store
+    @Environment(WearableStreamSessionManager.self) private var wearableManager
     @State private var viewModel = OutdoorMapViewModel()
 
     var body: some View {
@@ -26,10 +27,41 @@ struct OutdoorCaptureView: View {
                         Text("\(store.currentSession?.frameCount ?? 0) frames captured")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundStyle(.dimLabel)
+                    } else if let error = viewModel.captureError {
+                        Text(error)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.warningAmber)
+                            .multilineTextAlignment(.center)
                     } else {
                         Text("Start walking with your glasses on")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundStyle(.dimLabel)
+                    }
+
+                    if let device = wearableManager.connectedDeviceName {
+                        HStack(spacing: 6) {
+                            Image(systemName: "eyeglasses")
+                                .foregroundStyle(.confirmGreen)
+                            Text(device)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.dimLabel)
+                        }
+                    } else if case .registered = wearableManager.registrationState {
+                        HStack(spacing: 6) {
+                            Image(systemName: "eyeglasses")
+                                .foregroundStyle(.dimLabel)
+                            Text("Glasses registered")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.dimLabel)
+                        }
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "eyeglasses")
+                                .foregroundStyle(.warningAmber)
+                            Text("Glasses not connected")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.warningAmber)
+                        }
                     }
                 }
 
@@ -56,9 +88,13 @@ struct OutdoorCaptureView: View {
                 VStack(spacing: 16) {
                     Button {
                         if viewModel.isCapturing {
-                            viewModel.stopCapture(store: store)
+                            viewModel.stopCapture(wearableManager: wearableManager, store: store)
                         } else {
-                            viewModel.startCapture(store: store, locationService: locationService)
+                            viewModel.startCapture(
+                                wearableManager: wearableManager,
+                                store: store,
+                                locationService: locationService
+                            )
                         }
                     } label: {
                         HStack(spacing: 8) {
@@ -76,7 +112,7 @@ struct OutdoorCaptureView: View {
 
                     Button("Close") {
                         if viewModel.isCapturing {
-                            viewModel.stopCapture(store: store)
+                            viewModel.stopCapture(wearableManager: wearableManager, store: store)
                         }
                         coordinator.dismissFullScreen()
                     }

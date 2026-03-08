@@ -19,12 +19,17 @@ final class WearableStreamSessionManager {
     var connectedDeviceName: String?
     var connectedDeviceType: String?
 
+    var onFrameAccepted: ((WearableCapturedFrame, String) -> Void)?
+
     private var bridge: WearablesBridge
     private let persistence = WearablePersistenceService()
     private var sampler = WearableFrameSampler(targetFPS: 1.0)
     private weak var backendClient: BackendClient?
 
     private var bridgeStateSyncTask: Task<Void, Never>?
+
+    private var consecutiveUploadFailures = 0
+    private let maxConsecutiveUploadFailures = 5
 
     init(bridgeMode: WearableBridgeMode = .meta) {
         self.bridgeMode = bridgeMode
@@ -56,6 +61,7 @@ final class WearableStreamSessionManager {
         lastErrorMessage = nil
         connectedDeviceName = nil
         connectedDeviceType = nil
+        onFrameAccepted = nil
     }
 
     func configureIfNeeded() {
@@ -130,6 +136,8 @@ final class WearableStreamSessionManager {
                 return
             }
         }
+
+        consecutiveUploadFailures = 0
 
         do {
             let session = try await backendClient.createWearableSession(
@@ -226,8 +234,9 @@ final class WearableStreamSessionManager {
         guard let backendClient, let sessionID = activeSessionID, let homeID = activeHomeID else { return }
         guard sampler.shouldSample(at: frame.timestamp, reason: frame.sampleReason) else { return }
 
+        let persisted: PersistedWearableFrame
         do {
-            let persisted = try persistence.saveFrameImage(frame.image, sessionID: sessionID, frameID: frame.id)
+            persisted = try persistence.saveFrameImage(frame.image, sessionID: sessionID, frameID: frame.id)
             let localSummary = try persistence.recordFrame(
                 sessionID: sessionID,
                 frameID: frame.id,
@@ -235,6 +244,16 @@ final class WearableStreamSessionManager {
             )
             localPersistedFrameCount = localSummary.localFrameCount
             latestSessionStoragePath = localSummary.sessionDirectoryPath
+        } catch {
+            NSLog("[WearableStream] Local persist failed (non-fatal): %@", error.localizedDescription)
+
+            onFrameAccepted?(frame, sessionID)
+            return
+        }
+
+        onFrameAccepted?(frame, sessionID)
+
+        do {
             let upload = WearableFrameUpload(
                 frameID: frame.id.uuidString,
                 timestamp: ISO8601DateFormatter().string(from: frame.timestamp),
@@ -250,6 +269,7 @@ final class WearableStreamSessionManager {
                 ]
             )
             let response = try await backendClient.uploadWearableFrames(sessionID: sessionID, frames: [upload])
+            consecutiveUploadFailures = 0
             acceptedFrameCount = response.frameCount
             backendFrameCount = response.frameCount
             latestBackendSessionStatus = response.status
@@ -260,14 +280,23 @@ final class WearableStreamSessionManager {
                 localPersistedFrameCount = summary.localFrameCount
             }
             if acceptedFrameCount % 5 == 0 {
-                _ = try await backendClient.rebuildTopology(homeID: homeID)
+                _ = try? await backendClient.rebuildTopology(homeID: homeID)
             }
         } catch {
-            if let sessionID = activeSessionID {
+            consecutiveUploadFailures += 1
+            NSLog("[WearableStream] Upload failed (%d/%d): %@",
+                  consecutiveUploadFailures, maxConsecutiveUploadFailures,
+                  error.localizedDescription)
+            lastErrorMessage = "Upload failed (\(consecutiveUploadFailures)x): \(error.localizedDescription)"
+
+            if consecutiveUploadFailures >= maxConsecutiveUploadFailures {
+                NSLog("[WearableStream] Too many consecutive upload failures — stopping stream")
                 _ = try? await backendClient.updateWearableSessionStatus(sessionID: sessionID, status: "failed")
+                streamState = .failed("Backend unreachable after \(maxConsecutiveUploadFailures) attempts")
+            } else {
+
+                streamState = .degraded
             }
-            lastErrorMessage = error.localizedDescription
-            streamState = .failed(error.localizedDescription)
         }
     }
 

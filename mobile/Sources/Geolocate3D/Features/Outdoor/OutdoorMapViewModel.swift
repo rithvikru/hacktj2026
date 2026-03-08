@@ -8,36 +8,64 @@ final class OutdoorMapViewModel {
     var isCapturing = false
     var searchQuery = ""
     var searchResults: [OutdoorDetection] = []
+    var captureError: String?
 
-    private var captureTimer: Timer?
+    private var outdoorSessionID: UUID?
 
-    func startCapture(store: OutdoorSessionStore, locationService: LocationService) {
+    func startCapture(
+        wearableManager: WearableStreamSessionManager,
+        store: OutdoorSessionStore,
+        locationService: LocationService
+    ) {
         guard !isCapturing else { return }
-        isCapturing = true
-        _ = store.startSession()
+        captureError = nil
+
+        let session = store.startSession()
+        outdoorSessionID = session.id
         locationService.startUpdating()
 
-        captureTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        wearableManager.onFrameAccepted = { [weak self] frame, _ in
+            Task { @MainActor [weak self] in
                 guard let self, self.isCapturing else { return }
                 guard let location = locationService.currentLocation else { return }
-                guard let session = store.currentSession else { return }
+                guard let sessionID = self.outdoorSessionID else { return }
 
-                let frame = OutdoorFrame(
-                    sessionID: session.id,
+                let outdoorFrame = OutdoorFrame(
+                    sessionID: sessionID,
                     location: location,
                     imagePath: ""
                 )
-                store.addFrame(frame)
+                store.addFrame(outdoorFrame)
+            }
+        }
+
+        isCapturing = true
+        Task {
+            await wearableManager.startStreaming(
+                homeID: "outdoor-\(session.id.uuidString)",
+                placeHint: gpsPlaceHint(locationService: locationService)
+            )
+
+            if case .failed(let msg) = wearableManager.streamState {
+                captureError = msg
+                isCapturing = false
+                store.endSession()
+                wearableManager.onFrameAccepted = nil
             }
         }
     }
 
-    func stopCapture(store: OutdoorSessionStore) {
+    func stopCapture(
+        wearableManager: WearableStreamSessionManager,
+        store: OutdoorSessionStore
+    ) {
         isCapturing = false
-        captureTimer?.invalidate()
-        captureTimer = nil
+        wearableManager.onFrameAccepted = nil
+        Task {
+            await wearableManager.stopStreaming()
+        }
         store.endSession()
+        outdoorSessionID = nil
     }
 
     func clusteredDetections(from detections: [OutdoorDetection]) -> [OutdoorDetection] {
@@ -76,6 +104,11 @@ final class OutdoorMapViewModel {
             $0.label.lowercased().contains(lowered)
         }
 
+    }
+
+    private func gpsPlaceHint(locationService: LocationService) -> String? {
+        guard let loc = locationService.currentLocation else { return nil }
+        return String(format: "%.5f,%.5f", loc.coordinate.latitude, loc.coordinate.longitude)
     }
 
     private static func distance(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {

@@ -5,6 +5,7 @@ struct OutdoorMapView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(LocationService.self) private var locationService
     @Environment(OutdoorSessionStore.self) private var store
+    @Environment(WearableStreamSessionManager.self) private var wearableManager
     @State private var viewModel = OutdoorMapViewModel()
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var selectedDetection: OutdoorDetection?
@@ -49,9 +50,13 @@ struct OutdoorMapView: View {
                     duration: store.currentSession?.duration ?? 0
                 ) {
                     if viewModel.isCapturing {
-                        viewModel.stopCapture(store: store)
+                        viewModel.stopCapture(wearableManager: wearableManager, store: store)
                     } else {
-                        viewModel.startCapture(store: store, locationService: locationService)
+                        viewModel.startCapture(
+                            wearableManager: wearableManager,
+                            store: store,
+                            locationService: locationService
+                        )
                     }
                 }
             }
