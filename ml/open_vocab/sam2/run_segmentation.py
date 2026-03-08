@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -23,12 +24,22 @@ def _load_predictor():
         return _predictor
 
     try:
+        sam2_config = _normalized_sam2_config(os.getenv("SAM2_CONFIG_PATH"))
+        sam2_checkpoint = os.getenv("SAM2_CHECKPOINT_PATH")
+        if not sam2_config or not sam2_checkpoint:
+            logger.info(
+                "SAM 2 not configured; set SAM2_CONFIG_PATH and SAM2_CHECKPOINT_PATH to enable mask refinement"
+            )
+            _predictor = None
+            _sam2_available = False
+            return _predictor
+
         import torch
         from sam2.build_sam import build_sam2
         from sam2.sam2_image_predictor import SAM2ImagePredictor
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        sam2_model = build_sam2("sam2_hiera_small.yaml", None, device=device)
+        sam2_model = build_sam2(sam2_config, sam2_checkpoint, device=device)
         _predictor = SAM2ImagePredictor(sam2_model)
         _sam2_available = True
         logger.info("SAM 2 loaded on %s", device)
@@ -38,6 +49,15 @@ def _load_predictor():
         _sam2_available = False
 
     return _predictor
+
+def _normalized_sam2_config(config_value: str | None) -> str | None:
+    if not config_value:
+        return None
+    marker = "configs/"
+    normalized = config_value.replace("\\", "/")
+    if marker in normalized:
+        return normalized[normalized.index(marker):]
+    return config_value
 
 def segment(image: np.ndarray, bboxes_xyxy_norm: list[list[float]]) -> list[Mask]:
     if not bboxes_xyxy_norm:
@@ -74,7 +94,14 @@ def segment(image: np.ndarray, bboxes_xyxy_norm: list[list[float]]) -> list[Mask
 
     results = []
     for i, bbox in enumerate(bboxes_xyxy_norm):
-        mask_arr = masks_out[i, 0].cpu().numpy().astype(bool) if masks_out.ndim == 4 else masks_out[i].cpu().numpy().astype(bool)
+        if masks_out.ndim == 4:
+            raw_mask = masks_out[i, 0]
+        else:
+            raw_mask = masks_out[i]
+        if hasattr(raw_mask, "cpu"):
+            mask_arr = raw_mask.cpu().numpy().astype(bool)
+        else:
+            mask_arr = np.asarray(raw_mask).astype(bool)
         area = int(mask_arr.sum())
         stability = scores[i].item() if scores.ndim == 1 else scores[i, 0].item()
         results.append(

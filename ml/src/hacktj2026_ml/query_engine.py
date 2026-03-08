@@ -19,9 +19,8 @@ _RESULT_PRIORITY: dict[ResultType, int] = {
     "detected": 0,
     "signal_estimated": 1,
     "last_seen": 2,
-    "stale_memory": 3,
-    "likely_hidden": 4,
-    "not_found": 5,
+    "likely_hidden": 3,
+    "not_found": 4,
 }
 
 @dataclass(slots=True)
@@ -122,7 +121,6 @@ def open_vocab_candidates_to_results(
                 label=planner_plan.canonical_query_label,
                 result_type="detected",
                 confidence=candidate.confidence,
-                confidence_state="live_seen",
                 world_transform16=candidate.world_transform16,
                 bbox_xyxy_norm=candidate.bbox_xyxy_norm,
                 frame_id=candidate.frame_id,
@@ -171,9 +169,18 @@ def build_response_explanation(
     return f"No matching evidence was found for '{planner_plan.canonical_query_label}'."
 
 def deduplicate_results(results: list[SearchResultDTO]) -> list[SearchResultDTO]:
-    deduped: dict[tuple[str, str, str | None], SearchResultDTO] = {}
+    deduped: dict[tuple[object, ...], SearchResultDTO] = {}
     for result in results:
-        key = (result.label, result.result_type, result.frame_id)
+        bbox_key = tuple(round(value, 4) for value in result.bbox_xyxy_norm or [])
+        world_key = tuple(round(value, 4) for value in result.world_transform16 or [])
+        key = (
+            result.label,
+            result.result_type,
+            result.frame_id,
+            bbox_key,
+            world_key,
+            result.mask_ref or result.id,
+        )
         current = deduped.get(key)
         if current is None or result.confidence > current.confidence:
             deduped[key] = result

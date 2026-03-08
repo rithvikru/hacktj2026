@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
+import logging
+import os
 import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from hacktj2026_ml.chat_contracts import ChatRequestDTO, ChatResponseDTO
 from hacktj2026_ml.chat_service import ChatService
@@ -22,16 +24,46 @@ from hacktj2026_ml.query_contracts import (
     PlannerPlan,
     PlannerRequest,
     QueryRequest,
-    QueryResponseDTO,
 )
-from hacktj2026_ml.query_engine import QueryEngine, build_planner_request
+from hacktj2026_ml.query_engine import (
+    QueryEngine,
+    build_open_vocab_request,
+    build_planner_request,
+)
+from hacktj2026_ml.route_planner import plan_route
 from hacktj2026_ml.toolkit import DefaultQueryToolkit
 from serving.scene_graph.builder import build_scene_graph
-from serving.storage.home_store import HomeStore
+from serving.storage.frame_bundle import (
+    extract_frame_records,
+    load_manifest,
+    normalize_frame_bundle_manifest,
+    write_manifest,
+)
+from serving.storage.outdoor_store import DEFAULT_OUTDOOR_VOCAB, OutdoorFrame, OutdoorStore
 from serving.storage.room_store import RoomStore
-from serving.storage.wearable_store import ObservedObjectEvent, WearableFrameEvent, WearableStore
+from serving.workers.reconstruction_queue import (
+    enqueue_reconstruction,
+    shutdown_reconstruction_queue,
+)
+
+logger = logging.getLogger(__name__)
+MAX_MULTIPART_FILES = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FILES", "5000"))
+MAX_MULTIPART_FIELDS = int(os.getenv("HACKTJ2026_MAX_MULTIPART_FIELDS", "64"))
+SCAN_LIVE_DEFAULT_LABELS = [
+    "phone",
+    "airpods case",
+    "wallet",
+    "keys",
+    "glasses",
+    "charger",
+    "tv remote",
+    "spoon",
+    "bottle",
+    "can",
+]
 
 class RoomCreateRequest(APIDTOModel):
+    room_id: str | None = None
     name: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -52,45 +84,6 @@ class JobAcceptedResponse(APIDTOModel):
     job_type: str
     status: str
     job_id: str = Field(default_factory=lambda: str(uuid4()))
-
-class HomeCreateRequest(APIDTOModel):
-    name: str
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-class HomeAttachRoomRequest(APIDTOModel):
-    room_id: str
-
-class HomeSearchRequest(APIDTOModel):
-    query_text: str
-    current_room_id: str | None = None
-    current_place_id: str | None = None
-
-class WearableSessionCreateRequest(APIDTOModel):
-    home_id: str
-    device_name: str
-    source: str = "rayban_meta"
-    sampling_fps: float = 1.0
-
-class WearableObservedObjectRequest(APIDTOModel):
-    label: str
-    confidence: float
-
-class WearableFrameEventRequest(APIDTOModel):
-    frame_id: str
-    timestamp: str
-    sample_reason: str = "interval"
-    place_hint: str | None = None
-    observed_objects: list[WearableObservedObjectRequest] = Field(default_factory=list)
-    image_jpeg_base64: str | None = None
-    image_width: int | None = None
-    image_height: int | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-class WearableFrameBatchRequest(APIDTOModel):
-    events: list[WearableFrameEventRequest] = Field(default_factory=list)
-
-class WearableSessionStatusUpdateRequest(APIDTOModel):
-    status: str
 
 class SceneGraphNodeDTO(APIDTOModel):
     id: str
@@ -119,25 +112,91 @@ class RoomAssetsResponseDTO(APIDTOModel):
     reconstruction_status: str
     room_usdz_url: str | None = None
     dense_asset_url: str | None = None
+    dense_asset_kind: str | None = None
+    dense_renderer: str | None = None
+    dense_photoreal_ready: bool = False
+    dense_training_backend: str | None = None
+    dense_dataset_manifest_url: str | None = None
+    dense_transforms_url: str | None = None
+    dense_diagnostics_url: str | None = None
     scene_graph_version: int = 0
     frame_bundle_url: str | None = None
     updated_at: str
 
-class SimpleQueryBody(BaseModel):
-    query: str | None = None
-    query_text: str | None = None
+class SemanticSceneResponseDTO(APIDTOModel):
+    room_id: str
+    scene_version: int = 0
+    generated_at: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    objects: list[dict[str, Any]] = Field(default_factory=list)
 
-    @property
-    def resolved_query(self) -> str:
-        return self.query or self.query_text or ""
+class RouteRequestDTO(APIDTOModel):
+    start_world_transform16: list[float] = Field(min_length=16, max_length=16)
+    target_world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
+    target_label: str | None = None
+    grid_resolution_m: float = 0.20
+    obstacle_inflation_radius_m: float = 0.25
+
+class RouteWaypointDTO(APIDTOModel):
+    x: float
+    y: float
+    z: float
+    world_transform16: list[float] = Field(min_length=16, max_length=16)
+
+class RouteResponseDTO(APIDTOModel):
+    reachable: bool
+    reason: str
+    target_label: str | None = None
+    snapped_goal_world_transform16: list[float] | None = Field(default=None, min_length=16, max_length=16)
+    waypoints: list[RouteWaypointDTO] = Field(default_factory=list)
+
+class LiveScanDetectionDTO(APIDTOModel):
+    id: str
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    bbox_xyxy_norm: list[float] = Field(min_length=4, max_length=4)
+    mask_available: bool = False
+
+class LiveScanDetectResponseDTO(APIDTOModel):
+    labels: list[str] = Field(default_factory=list)
+    detections: list[LiveScanDetectionDTO] = Field(default_factory=list)
 
 app = FastAPI(title="hacktj2026-ml", version="0.2.0")
 engine = QueryEngine(toolkit=DefaultQueryToolkit())
 chat_service = ChatService(query_engine=engine)
 
+@app.on_event("shutdown")
+def shutdown_workers() -> None:
+    shutdown_reconstruction_queue()
+
 @app.get("/healthz")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+@app.post("/scan/live-detect", response_model=LiveScanDetectResponseDTO)
+async def live_detect_scan(
+    file: UploadFile = File(...),
+    labels: str | None = Form(default=None),
+    max_candidates: int = Form(default=6, alias="maxCandidates"),
+) -> LiveScanDetectResponseDTO:
+    label_list = _parse_live_detect_labels(labels)
+    if not label_list:
+        label_list = list(SCAN_LIVE_DEFAULT_LABELS)
+    max_candidates = max(1, min(max_candidates, 12))
+
+    suffix = Path(file.filename or "scan.jpg").suffix or ".jpg"
+    temp_image = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        temp_image.write(await file.read())
+        temp_image.close()
+        return await asyncio.to_thread(
+            _run_live_detect_scan,
+            Path(temp_image.name),
+            label_list,
+            max_candidates,
+        )
+    finally:
+        Path(temp_image.name).unlink(missing_ok=True)
 
 @app.get("/rooms")
 def list_rooms():
@@ -150,250 +209,17 @@ def list_rooms():
 @app.post("/rooms")
 def create_room(request: RoomCreateRequest):
     store = RoomStore()
-    room_id = str(uuid4())
-    store.create(room_id, request.name)
-    return {"roomID": room_id, "name": request.name, "status": "created"}
+    room_id = request.room_id or str(uuid4())
+    existing = store.get(room_id)
+    room = store.create(room_id, request.name)
+    status = "existing" if existing is not None else "created"
+    return {"roomID": room.room_id, "name": room.name, "status": status}
 
-@app.get("/homes")
-def list_homes():
-    store = HomeStore()
-    return [
-        {"homeID": h.home_id, "name": h.name, "roomCount": len(h.room_ids), "updatedAt": h.updated_at}
-        for h in store.list_all()
-    ]
-
-@app.post("/homes")
-def create_home(request: HomeCreateRequest):
-    store = HomeStore()
-    home = store.create(request.name, metadata=request.metadata)
-    return {"homeID": home.home_id, "name": home.name, "status": "created"}
-
-@app.post("/wearables/sessions")
-def create_wearable_session(request: WearableSessionCreateRequest):
-    if not HomeStore().get(request.home_id):
-        raise HTTPException(404, "Home not found")
-    session_id = str(uuid4())
-    session = WearableStore().create_session(
-        session_id=session_id,
-        home_id=request.home_id,
-        device_name=request.device_name,
-        source=request.source,
-        sampling_fps=request.sampling_fps,
-    )
-    return {
-        "sessionID": session.session_id,
-        "homeID": session.home_id,
-        "deviceName": session.device_name,
-        "status": session.status,
-        "samplingFps": session.sampling_fps,
-        "frameCount": len(session.frame_events),
-        "updatedAt": session.updated_at,
-    }
-
-@app.get("/wearables/sessions")
-def list_wearable_sessions(home_id: str | None = None):
-    sessions = WearableStore().list_sessions(home_id=home_id)
-    return {
-        "sessions": [
-            {
-                "sessionID": session.session_id,
-                "homeID": session.home_id,
-                "deviceName": session.device_name,
-                "source": session.source,
-                "status": session.status,
-                "samplingFps": session.sampling_fps,
-                "frameCount": len(session.frame_events),
-                "updatedAt": session.updated_at,
-            }
-            for session in sessions
-        ]
-    }
-
-@app.get("/wearables/sessions/{session_id}")
-def get_wearable_session(session_id: str):
-    session = WearableStore().get(session_id)
-    if session is None:
-        raise HTTPException(404, "Wearable session not found")
-    return {
-        "sessionID": session.session_id,
-        "homeID": session.home_id,
-        "deviceName": session.device_name,
-        "source": session.source,
-        "status": session.status,
-        "samplingFps": session.sampling_fps,
-        "frameCount": len(session.frame_events),
-        "storagePath": str(WearableStore().frames_directory(session.session_id)),
-        "lastFrameID": session.frame_events[-1].frame_id if session.frame_events else None,
-        "lastFrameTimestamp": session.frame_events[-1].timestamp if session.frame_events else None,
-        "updatedAt": session.updated_at,
-    }
-
-@app.post("/wearables/sessions/{session_id}/frames")
-def ingest_wearable_frames(session_id: str, request: WearableFrameBatchRequest):
-    store = WearableStore()
-    session = store.get(session_id)
-    if session is None:
-        raise HTTPException(404, "Wearable session not found")
-
-    frames_dir = store.frames_directory(session_id)
-    parsed_events: list[WearableFrameEvent] = []
-    accepted_frame_ids: set[str] = set()
-    existing_frame_ids = {frame.frame_id for frame in session.frame_events}
-    for event in request.events:
-        if event.frame_id in accepted_frame_ids:
-            continue
-        accepted_frame_ids.add(event.frame_id)
-        image_path = None
-        if event.image_jpeg_base64:
-            image_bytes = base64.b64decode(event.image_jpeg_base64)
-            image_path = frames_dir / f"{event.frame_id}.jpg"
-            image_path.write_bytes(image_bytes)
-
-        parsed_events.append(
-            WearableFrameEvent(
-                frame_id=event.frame_id,
-                timestamp=event.timestamp,
-                sample_reason=event.sample_reason,
-                place_hint=event.place_hint,
-                image_path=str(image_path) if image_path else None,
-                image_width=event.image_width,
-                image_height=event.image_height,
-                observed_objects=[
-                    ObservedObjectEvent(label=obj.label, confidence=obj.confidence)
-                    for obj in event.observed_objects
-                ],
-                metadata=event.metadata,
-            )
-        )
-
-    updated = store.append_frames(session_id, parsed_events)
-    new_frame_ids = {frame.frame_id for frame in parsed_events}
-    return {
-        "sessionID": session_id,
-        "status": updated.status if updated else "missing",
-        "accepted": len(parsed_events),
-        "newFrames": len(new_frame_ids - existing_frame_ids),
-        "duplicateFrames": len(new_frame_ids & existing_frame_ids),
-        "frameCount": len(updated.frame_events) if updated else 0,
-        "updatedAt": updated.updated_at if updated else None,
-    }
-
-@app.post("/wearables/sessions/{session_id}/status")
-def update_wearable_session_status(session_id: str, request: WearableSessionStatusUpdateRequest):
-    session = WearableStore().update_status(session_id, request.status)
-    if session is None:
-        raise HTTPException(404, "Wearable session not found")
-    return {
-        "sessionID": session.session_id,
-        "status": session.status,
-        "frameCount": len(session.frame_events),
-        "updatedAt": session.updated_at,
-    }
-
-@app.post("/homes/{home_id}/rooms")
-def attach_room_to_home(home_id: str, request: HomeAttachRoomRequest):
-    homes = HomeStore()
-    rooms = RoomStore()
-    if not rooms.get(request.room_id):
-        raise HTTPException(404, "Room not found")
-    home = homes.attach_room(home_id, request.room_id)
-    if not home:
-        raise HTTPException(404, "Home not found")
-    return {"homeID": home.home_id, "roomIDs": home.room_ids, "status": "updated"}
-
-@app.post("/homes/{home_id}/map/rebuild")
-def rebuild_home_map(home_id: str):
-    store = HomeStore()
-    try:
-        return store.rebuild_map(home_id)
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.post("/homes/{home_id}/topology/rebuild")
-def rebuild_home_topology(home_id: str):
-    store = HomeStore()
-    try:
-        return store.rebuild_map(home_id)
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.get("/homes/{home_id}/topology")
-def get_home_topology(home_id: str):
-    store = HomeStore()
-    home = store.get(home_id)
-    if home is None:
-        raise HTTPException(404, "Home not found")
-    if not home.topology_graph:
-        return store.rebuild_map(home_id)
-    return {"homeId": home.home_id, **home.topology_graph}
-
-@app.post("/homes/{home_id}/search")
-def search_home(home_id: str, request: HomeSearchRequest):
-    store = HomeStore()
-    try:
-        return store.search(
-            home_id,
-            request.query_text,
-            current_room_id=request.current_room_id,
-            current_place_id=request.current_place_id,
-        )
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.get("/homes/{home_id}/route")
-def route_home(
-    home_id: str,
-    target_room_id: str | None = None,
-    current_room_id: str | None = None,
-    target_place_id: str | None = None,
-    current_place_id: str | None = None,
-):
-    store = HomeStore()
-    try:
-        return store.route(
-            home_id,
-            target_room_id=target_room_id,
-            current_room_id=current_room_id,
-            target_place_id=target_place_id,
-            current_place_id=current_place_id,
-        )
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.get("/homes/{home_id}/memories")
-def list_home_memories(home_id: str):
-    store = HomeStore()
-    try:
-        return {
-            "homeID": home_id,
-            "memories": [
-                {
-                    "id": memory.id,
-                    "label": memory.label,
-                    "roomId": memory.room_id,
-                    "roomName": memory.room_name,
-                    "placeId": memory.place_id,
-                    "confidence": memory.confidence,
-                    "confidenceState": memory.confidence_state,
-                    "recencySeconds": memory.recency_seconds,
-                    "memoryFreshness": memory.memory_freshness,
-                }
-                for memory in store.list_memories(home_id)
-            ],
-        }
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.get("/homes/{home_id}/change-events")
-def list_home_change_events(home_id: str):
-    store = HomeStore()
-    try:
-        return {"homeID": home_id, "events": store.change_events(home_id)}
-    except KeyError:
-        raise HTTPException(404, "Home not found") from None
-
-@app.post("/rooms/{room_id}/frame-bundles")
-async def upload_frame_bundle(room_id: str, file: UploadFile = File(...)):
+@app.post("/rooms/{room_id}/frame-bundles", response_model=FrameBundleAcceptedResponse)
+async def upload_frame_bundle(
+    room_id: str,
+    request: Request,
+) -> FrameBundleAcceptedResponse:
     store = RoomStore()
     room = store.get(room_id)
     if not room:
@@ -402,32 +228,84 @@ async def upload_frame_bundle(room_id: str, file: UploadFile = File(...)):
     data_dir = Path("data/rooms") / room_id / "frames"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    content = await file.read()
-    tmp.write(content)
-    tmp.close()
+    try:
+        form = await request.form(
+            max_files=MAX_MULTIPART_FILES,
+            max_fields=MAX_MULTIPART_FIELDS,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "Too many files" in message:
+            raise HTTPException(
+                400,
+                f"Too many files in frame bundle upload. Maximum number of files is {MAX_MULTIPART_FILES}.",
+            ) from exc
+        raise
 
-    with zipfile.ZipFile(tmp.name, "r") as zf:
-        zf.extractall(data_dir)
-    Path(tmp.name).unlink()
+    file = form.get("file")
+    manifest = form.get("manifest")
+    images = [value for value in form.getlist("images") if isinstance(value, StarletteUploadFile)]
+    depth_files = [
+        value for value in form.getlist("depth_files") if isinstance(value, StarletteUploadFile)
+    ]
+    confidence_files = [
+        value for value in form.getlist("confidence_files") if isinstance(value, StarletteUploadFile)
+    ]
+
+    if isinstance(manifest, StarletteUploadFile):
+        await _save_upload(manifest, data_dir / "manifest.json")
+        for upload in images:
+            await _save_upload(upload, data_dir / "images" / Path(upload.filename or "image.bin").name)
+        for upload in depth_files:
+            await _save_upload(upload, data_dir / "depth" / Path(upload.filename or "depth.bin").name)
+        for upload in confidence_files:
+            await _save_upload(
+                upload,
+                data_dir / "confidence" / Path(upload.filename or "confidence.bin").name,
+            )
+    elif isinstance(file, StarletteUploadFile):
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename or "bundle.zip").suffix or ".zip")
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+        try:
+            with zipfile.ZipFile(tmp.name, "r") as zf:
+                _safe_extract_zip(zf, data_dir)
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(400, "Frame bundle must be uploaded as multipart files or a ZIP archive.") from exc
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+    else:
+        raise HTTPException(400, "No frame bundle payload provided.")
 
     manifest_path = data_dir / "manifest.json"
-    frames: list[dict] = []
+    frames: list[dict[str, Any]] = []
+    session_id: str | None = None
     if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text())
-        frames = manifest.get("frames", [])
+        manifest_payload = normalize_frame_bundle_manifest(load_manifest(manifest_path), data_dir)
+        write_manifest(manifest_path, manifest_payload)
+        frames = extract_frame_records(manifest_payload)
+        session_id = manifest_payload.get("session_id")
 
     room.frame_dir = data_dir
     room.frames = frames
-
+    room.observations = _extract_observations(frames)
     room.scene_graph = build_scene_graph(room)
+    store.update(
+        room_id,
+        frame_dir=data_dir,
+        frames=frames,
+        observations=room.observations,
+        scene_graph=room.scene_graph,
+    )
 
-    return {
-        "roomID": room_id,
-        "bundleID": str(uuid4()),
-        "status": "accepted",
-        "frameCount": len(frames),
-    }
+    return FrameBundleAcceptedResponse(
+        room_id=room_id,
+        bundle_id=str(uuid4()),
+        status="accepted",
+        frame_count=len(frames),
+        session_id=session_id,
+    )
 
 @app.post("/rooms/{room_id}/reconstruct", response_model=JobAcceptedResponse)
 async def reconstruct_room_endpoint(room_id: str) -> JobAcceptedResponse:
@@ -438,11 +316,8 @@ async def reconstruct_room_endpoint(room_id: str) -> JobAcceptedResponse:
     if not room.frame_dir:
         raise HTTPException(400, "No frames uploaded")
 
-    from serving.workers.reconstruct_room import reconstruct_room
-
-    asyncio.create_task(
-        reconstruct_room(room_id, room.frame_dir, room.frames, store)
-    )
+    store.update(room_id, reconstruction_status="queued", reconstruction_assets={})
+    enqueue_reconstruction(room_id)
     return JobAcceptedResponse(room_id=room_id, job_type="reconstruct", status="queued")
 
 @app.post("/rooms/{room_id}/index", response_model=JobAcceptedResponse)
@@ -465,15 +340,8 @@ def query_room(room_id: str, request: QueryRequest) -> dict:
             {
                 "id": r.get("id", ""),
                 "label": r.get("label", ""),
-                "resultType": r.get("resultType", "not_found"),
                 "confidence": r.get("confidence", 0.0),
-                "confidenceState": r.get("confidenceState"),
                 "worldTransform": r.get("worldTransform16"),
-                "roomId": r.get("roomId"),
-                "roomName": r.get("roomName"),
-                "recencySeconds": r.get("recencySeconds"),
-                "memoryFreshness": r.get("memoryFreshness"),
-                "routeHint": r.get("routeHint"),
                 "evidence": r.get("evidence", []),
                 "explanation": r.get("explanation", ""),
             }
@@ -487,25 +355,28 @@ def chat_room(room_id: str, request: ChatRequestDTO) -> ChatResponseDTO:
     adjusted_request = request.model_copy(update={"room_id": room_id})
     return chat_service.chat(adjusted_request)
 
-@app.post("/rooms/{room_id}/open-vocab-search")
-def open_vocab_search(room_id: str, request: OpenVocabSearchRequest) -> list[dict]:
-    adjusted_request = request.model_copy(update={"room_id": room_id})
-    toolkit = engine.toolkit or DefaultQueryToolkit()
-    response = toolkit.query_open_vocab(adjusted_request)
+@app.post("/rooms/{room_id}/route", response_model=RouteResponseDTO)
+def route_room(room_id: str, request: RouteRequestDTO) -> RouteResponseDTO:
+    store = RoomStore()
+    room = store.get(room_id)
+    if not room:
+        raise HTTPException(404, "Room not found")
 
-    return [
-        {
-            "id": c.id,
-            "label": request.target_phrase,
-            "resultType": "detected",
-            "confidence": c.confidence,
-            "confidenceState": "live_seen",
-            "worldTransform": c.world_transform16,
-            "evidence": c.evidence,
-            "explanation": c.explanation,
-        }
-        for c in response.candidates
-    ]
+    route = plan_route(
+        room=room,
+        start_world_transform16=request.start_world_transform16,
+        target_world_transform16=request.target_world_transform16,
+        target_label=request.target_label,
+        grid_resolution_m=request.grid_resolution_m,
+        obstacle_inflation_radius_m=request.obstacle_inflation_radius_m,
+    )
+    return RouteResponseDTO(**route)
+
+@app.post("/rooms/{room_id}/open-vocab-search", response_model=OpenVocabSearchResponseDTO)
+def open_vocab_search(room_id: str, request: dict[str, Any]) -> OpenVocabSearchResponseDTO:
+    adjusted_request = _build_open_vocab_request_from_payload(room_id=room_id, payload=request)
+    toolkit = engine.toolkit or DefaultQueryToolkit()
+    return toolkit.query_open_vocab(adjusted_request)
 
 @app.get("/rooms/{room_id}/scene-graph")
 def scene_graph(room_id: str):
@@ -556,3 +427,248 @@ def assets(room_id: str):
     if not room:
         return {"status": "pending"}
     return {"status": room.reconstruction_status, **room.reconstruction_assets}
+
+@app.get("/rooms/{room_id}/semantic-objects", response_model=SemanticSceneResponseDTO)
+def semantic_objects(room_id: str) -> SemanticSceneResponseDTO:
+    scene_path = Path("data/rooms") / room_id / "reconstruction" / "semantic_scene.json"
+    if not scene_path.exists():
+        return SemanticSceneResponseDTO(room_id=room_id, scene_version=0, generated_at=None, objects=[])
+    payload = json.loads(scene_path.read_text(encoding="utf-8"))
+    payload.setdefault("room_id", room_id)
+    payload.setdefault("scene_version", 1)
+    payload.setdefault("objects", [])
+    return SemanticSceneResponseDTO.model_validate(payload)
+
+class OutdoorSessionCreateResponse(APIDTOModel):
+    session_id: str
+    status: str
+
+class OutdoorFrameRequest(BaseModel):
+    lat: float
+    lng: float
+    accuracy: float = 0.0
+    timestamp: float = 0.0
+    image_base64: str | None = None
+
+class OutdoorFrameResponse(APIDTOModel):
+    session_id: str
+    frame_id: str
+    status: str
+
+class OutdoorSearchRequest(BaseModel):
+    query_text: str
+
+class OutdoorDetectionDTO(APIDTOModel):
+    label: str
+    confidence: float
+    lat: float
+    lng: float
+    frame_id: str
+    bbox_xyxy_norm: list[float] | None = None
+
+@app.post("/outdoor/sessions")
+def create_outdoor_session():
+    store = OutdoorStore()
+    session_id = str(uuid4())
+    store.create(session_id)
+    return {"sessionId": session_id, "status": "created"}
+
+@app.get("/outdoor/sessions/{session_id}")
+def get_outdoor_session(session_id: str):
+    store = OutdoorStore()
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Outdoor session not found")
+    return {
+        "sessionId": session.session_id,
+        "createdAt": session.created_at,
+        "frameCount": len(session.frames),
+        "detectionCount": len(session.all_detections),
+    }
+
+@app.post("/outdoor/sessions/{session_id}/frames")
+def upload_outdoor_frame(session_id: str, request: OutdoorFrameRequest):
+    store = OutdoorStore()
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Outdoor session not found")
+
+    frame_id = str(uuid4())
+    has_image = False
+
+    if request.image_base64:
+        import base64
+
+        frame_dir = Path("data/outdoor") / session_id / "frames"
+        frame_dir.mkdir(parents=True, exist_ok=True)
+        img_bytes = base64.b64decode(request.image_base64)
+        (frame_dir / f"{frame_id}.jpg").write_bytes(img_bytes)
+        has_image = True
+
+    frame = OutdoorFrame(
+        frame_id=frame_id,
+        lat=request.lat,
+        lng=request.lng,
+        accuracy=request.accuracy,
+        timestamp=request.timestamp,
+        has_image=has_image,
+    )
+    store.add_frame(session_id, frame)
+
+    return {"sessionId": session_id, "frameId": frame_id, "status": "accepted"}
+
+@app.post("/outdoor/sessions/{session_id}/search")
+def search_outdoor_session(session_id: str, request: OutdoorSearchRequest):
+    store = OutdoorStore()
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Outdoor session not found")
+
+    frame_dir = Path("data/outdoor") / session_id / "frames"
+    matches: list[dict] = []
+
+    try:
+        from open_vocab.grounding_dino.run_grounding import detect as gd_detect
+    except ImportError:
+
+        return {"sessionId": session_id, "query": request.query_text, "matches": []}
+
+    image_paths: list[Path] = []
+    frame_lookup: dict[str, OutdoorFrame] = {}
+
+    for fid, frame in session.frames.items():
+        if frame.has_image:
+            img_path = frame_dir / f"{fid}.jpg"
+            if img_path.exists():
+                image_paths.append(img_path)
+                frame_lookup[str(img_path)] = frame
+
+    if not image_paths:
+        return {"sessionId": session_id, "query": request.query_text, "matches": []}
+
+    detections = gd_detect(image_paths, request.query_text)
+
+    for det in detections:
+        frame = frame_lookup.get(det.image_path)
+        if not frame:
+            continue
+        matches.append({
+            "label": request.query_text,
+            "confidence": float(det.confidence),
+            "lat": frame.lat,
+            "lng": frame.lng,
+            "frameId": frame.frame_id,
+            "bboxXyxyNorm": det.bbox_xyxy_norm if hasattr(det, "bbox_xyxy_norm") else None,
+        })
+
+        frame.detections.append({
+            "label": request.query_text,
+            "confidence": float(det.confidence),
+            "bbox_xyxy_norm": det.bbox_xyxy_norm if hasattr(det, "bbox_xyxy_norm") else None,
+        })
+
+    return {"sessionId": session_id, "query": request.query_text, "matches": matches}
+
+@app.get("/outdoor/sessions/{session_id}/detections")
+def get_outdoor_detections(session_id: str):
+    store = OutdoorStore()
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(404, "Outdoor session not found")
+    return {"sessionId": session_id, "detections": session.all_detections}
+
+async def _save_upload(upload: UploadFile, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(await upload.read())
+
+def _build_open_vocab_request_from_payload(room_id: str, payload: dict[str, Any]) -> OpenVocabSearchRequest:
+    try:
+        return OpenVocabSearchRequest.model_validate({**payload, "room_id": room_id})
+    except Exception:
+        query_text = (
+            payload.get("query")
+            or payload.get("queryText")
+            or payload.get("query_text")
+            or ""
+        ).strip()
+        if not query_text:
+            raise HTTPException(422, "Open-vocab search requires query text.")
+
+        frame_refs = payload.get("frameRefs") or payload.get("frame_refs") or []
+        query_request = QueryRequest(query_text=query_text, frame_refs=frame_refs)
+        planner_request = build_planner_request(room_id=room_id, request=query_request)
+        planner_plan = engine.build_plan(planner_request)
+        return build_open_vocab_request(room_id=room_id, plan=planner_plan, query_request=query_request)
+
+def _extract_observations(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    observations: list[dict[str, Any]] = []
+    for frame in frames:
+        frame_observations = frame.get("observations", [])
+        if isinstance(frame_observations, list):
+            observations.extend(item for item in frame_observations if isinstance(item, dict))
+    return observations
+
+def _parse_live_detect_labels(raw_labels: str | None) -> list[str]:
+    if raw_labels is None:
+        return []
+    labels = [label.strip() for label in raw_labels.split(",")]
+    return [label for label in labels if label]
+
+def _run_live_detect_scan(
+    image_path: Path,
+    label_list: list[str],
+    max_candidates: int,
+) -> LiveScanDetectResponseDTO:
+    try:
+        import numpy as np
+        from PIL import Image
+
+        from open_vocab.grounding_dino.run_grounding import detect
+        from open_vocab.sam2.run_segmentation import segment
+    except ImportError as exc:
+        logger.warning("Live scan detection dependencies unavailable: %s", exc)
+        return LiveScanDetectResponseDTO(labels=label_list, detections=[])
+
+    try:
+        prompt = " . ".join(label_list)
+        detections = detect(
+            [image_path],
+            prompt,
+            box_threshold=0.18,
+            text_threshold=0.18,
+            max_prompt_variants=1,
+            max_tiles_per_frame=4,
+        )[:max_candidates]
+
+        if not detections:
+            return LiveScanDetectResponseDTO(labels=label_list, detections=[])
+
+        try:
+            image = np.array(Image.open(image_path).convert("RGB"))
+            masks = segment(image, [detection.bbox_xyxy_norm for detection in detections])
+        except Exception as exc:
+            logger.warning("Live scan mask refinement failed; continuing with boxes only: %s", exc)
+            masks = []
+
+        response_detections = [
+            LiveScanDetectionDTO(
+                id=str(uuid4()),
+                label=detection.label,
+                confidence=min(max(float(detection.confidence), 0.0), 1.0),
+                bbox_xyxy_norm=[float(value) for value in detection.bbox_xyxy_norm],
+                mask_available=index < len(masks) and getattr(masks[index], "mask", None) is not None,
+            )
+            for index, detection in enumerate(detections)
+        ]
+        return LiveScanDetectResponseDTO(labels=label_list, detections=response_detections)
+    except Exception as exc:
+        logger.warning("Live scan detection failed; returning no detections: %s", exc)
+        return LiveScanDetectResponseDTO(labels=label_list, detections=[])
+
+def _safe_extract_zip(archive: zipfile.ZipFile, destination: Path) -> None:
+    destination = destination.resolve()
+    for member in archive.infolist():
+        member_path = (destination / member.filename).resolve()
+        if destination not in member_path.parents and member_path != destination:
+            raise HTTPException(400, "Frame bundle archive contains an invalid path.")
+    archive.extractall(destination)

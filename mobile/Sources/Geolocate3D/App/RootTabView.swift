@@ -2,14 +2,23 @@ import SwiftUI
 
 struct RootTabView: View {
     @Environment(AppCoordinator.self) private var coordinator
+    @AppStorage("preferredMode") private var preferredMode = "inside"
+
+    private var isOutdoor: Bool { preferredMode == AppMode.outside.rawValue }
 
     var body: some View {
         @Bindable var nav = coordinator
 
         TabView(selection: $nav.selectedTab) {
-            HomeStack()
-                .tabItem { Label("Home", systemImage: "eyeglasses") }
-                .tag(0)
+            if isOutdoor {
+                OutdoorMapView()
+                    .tabItem { Label("Map", systemImage: "map.fill") }
+                    .tag(0)
+            } else {
+                HomeStack()
+                    .tabItem { Label("Home", systemImage: "eyeglasses") }
+                    .tag(0)
+            }
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(1)
@@ -26,6 +35,8 @@ struct RootTabView: View {
                 LiveSearchView(roomID: roomID)
             case .companionTarget:
                 CompanionTargetStubView()
+            case .outdoorCapture:
+                OutdoorCaptureView()
             }
         }
 
@@ -43,6 +54,10 @@ struct RootTabView: View {
             case .objectDetail(let id):
                 ObjectDetailView(observationID: id)
                     .presentationDetents([.medium])
+            case .framePreview(let detectionID):
+                FramePreviewSheet(detectionID: detectionID)
+                    .presentationDetents([.medium, .large])
+                    .presentationCornerRadius(32)
             }
         }
     }

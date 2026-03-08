@@ -105,8 +105,13 @@ def build_system_prompt(planner_summary: str | None, query_response) -> str:
 
 def build_llm_messages(prior_messages, user_query: str, system_prompt: str):
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend({"role": item.role, "content": item.content} for item in prior_messages)
-    if not prior_messages or prior_messages[-1].content.strip() != user_query.strip():
+    safe_prior_messages = [
+        {"role": item.role, "content": item.content}
+        for item in prior_messages
+        if item.role in {"user", "assistant"}
+    ]
+    messages.extend(safe_prior_messages)
+    if not safe_prior_messages or safe_prior_messages[-1]["content"].strip() != user_query.strip():
         messages.append({"role": "user", "content": user_query})
     return messages
 

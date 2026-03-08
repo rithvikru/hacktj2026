@@ -211,6 +211,61 @@ final class BackendClient {
         return try decoder.decode(BackendQueryResponse.self, from: data)
     }
 
+    func createOutdoorSession() async throws -> UUID {
+        let url = baseURL.appendingPathComponent("outdoor/sessions")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["name": "outdoor-session"])
+        let (data, _) = try await session.data(for: request)
+        let decoded = try JSONDecoder().decode([String: String].self, from: data)
+        guard let idString = decoded["sessionId"], let id = UUID(uuidString: idString) else {
+            throw BackendClientError.requestFailed(statusCode: 0, message: "Missing sessionId")
+        }
+        return id
+    }
+
+    func uploadOutdoorFrame(
+        sessionID: UUID,
+        latitude: Double,
+        longitude: Double,
+        accuracy: Double,
+        timestamp: Date,
+        imageBase64: String? = nil
+    ) async throws {
+        let url = baseURL.appendingPathComponent("outdoor/sessions/\(sessionID.uuidString)/frames")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = [
+            "lat": latitude,
+            "lng": longitude,
+            "accuracy": accuracy,
+            "timestamp": ISO8601DateFormatter().string(from: timestamp)
+        ]
+        if let imageBase64 { body["image_base64"] = imageBase64 }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, _) = try await session.data(for: request)
+    }
+
+    func searchOutdoorSession(sessionID: UUID, query: String) async throws -> [[String: Any]] {
+        let url = baseURL.appendingPathComponent("outdoor/sessions/\(sessionID.uuidString)/search")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["query_text": query])
+        let (data, _) = try await session.data(for: request)
+        let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return decoded?["matches"] as? [[String: Any]] ?? []
+    }
+
+    func getOutdoorDetections(sessionID: UUID) async throws -> [[String: Any]] {
+        let url = baseURL.appendingPathComponent("outdoor/sessions/\(sessionID.uuidString)/detections")
+        let (data, _) = try await session.data(from: url)
+        let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return decoded?["detections"] as? [[String: Any]] ?? []
+    }
+
     func checkConnection() async {
         do {
             let url = baseURL.appendingPathComponent("healthz")

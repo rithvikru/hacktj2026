@@ -133,10 +133,18 @@ struct SettingsView: View {
     @AppStorage("activeHomeID") private var activeHomeID = ""
     @AppStorage("backendBaseURL") private var backendBaseURL = BackendClient.defaultBaseURLString
     @AppStorage("wearableBridgeMode") private var wearableBridgeMode = WearableBridgeMode.meta.rawValue
+    @AppStorage("preferredMode") private var preferredMode = AppMode.inside.rawValue
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Mode") {
+                    Picker("Search Mode", selection: $preferredMode) {
+                        Text("Inside").tag(AppMode.inside.rawValue)
+                        Text("Outside").tag(AppMode.outside.rawValue)
+                    }
+                    .pickerStyle(.segmented)
+                }
                 Section("Backend") {
                     TextField("Server URL", text: $backendBaseURL)
                         .textInputAutocapitalization(.never)

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "gridResolutionM": {
+      "default": 0.2,
+      "title": "Gridresolutionm",
+      "type": "number"
+    },
+    "obstacleInflationRadiusM": {
+      "default": 0.25,
+      "title": "Obstacleinflationradiusm",
+      "type": "number"
+    },
+    "startWorldTransform16": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 16,
+      "minItems": 16,
+      "title": "Startworldtransform16",
+      "type": "array"
+    },
+    "targetLabel": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Targetlabel"
+    },
+    "targetWorldTransform16": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 16,
+          "minItems": 16,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Targetworldtransform16"
+    }
+  },
+  "required": [
+    "startWorldTransform16"
+  ],
+  "title": "RouteRequestDTO",
+  "type": "object"
+}

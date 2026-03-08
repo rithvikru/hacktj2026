@@ -6,6 +6,8 @@ struct Geolocate3DApp: App {
     @State private var coordinator = AppCoordinator()
     @State private var spatialSessionManager = SpatialSessionManager()
     @State private var roomStore = RoomStore()
+    @State private var locationService = LocationService()
+    @State private var outdoorStore = OutdoorSessionStore()
     @State private var backendClient = BackendClient(
         baseURL: URL(
             string: UserDefaults.standard.string(forKey: "backendBaseURL")
@@ -33,6 +35,8 @@ struct Geolocate3DApp: App {
             .environment(roomStore)
             .environment(backendClient)
             .environment(wearableStreamManager)
+            .environment(locationService)
+            .environment(outdoorStore)
             .preferredColorScheme(.dark)
             .task {
                 wearableStreamManager.attachBackendClient(backendClient)

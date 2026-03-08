@@ -1,0 +1,92 @@
+{
+  "frame_count": 1,
+  "frames": [
+    {
+      "cameraTransform16": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "camera_transform16": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "depthPath": "depth/frame-1.png",
+      "depth_path": "depth/frame-1.png",
+      "extrinsics": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "filename": "images/frame-1.jpg",
+      "frame_id": "frame-1",
+      "id": "frame-1",
+      "image": "images/frame-1.jpg",
+      "imagePath": "images/frame-1.jpg",
+      "image_path": "images/frame-1.jpg",
+      "intrinsics9": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "intrinsics_9": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "session_id": "session-1"
+}

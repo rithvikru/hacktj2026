@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import struct
 import subprocess
@@ -9,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 logger = logging.getLogger(__name__)
+ENABLE_EXPERIMENTAL_GSPLAT = os.getenv("HACKTJ2026_ENABLE_EXPERIMENTAL_GSPLAT", "0") == "1"
 
 def train_gaussians(
     pointcloud_path: Path,
@@ -20,22 +22,23 @@ def train_gaussians(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        result = _train_with_gsplat(
-            pointcloud_path, image_dir, poses, output_dir, num_iterations
-        )
-        if result:
-            return result
-    except (ImportError, Exception) as e:
-        logger.warning("gsplat training failed: %s, trying subprocess fallback", e)
-
-    try:
         result = _train_with_subprocess(
             pointcloud_path, image_dir, poses, output_dir, num_iterations
         )
         if result:
             return result
     except Exception as e:
-        logger.warning("Subprocess training failed: %s, using point cloud fallback", e)
+        logger.warning("Subprocess training failed: %s", e)
+
+    if ENABLE_EXPERIMENTAL_GSPLAT:
+        try:
+            result = _train_with_gsplat(
+                pointcloud_path, image_dir, poses, output_dir, num_iterations
+            )
+            if result:
+                return result
+        except (ImportError, Exception) as e:
+            logger.warning("Experimental gsplat placeholder failed: %s", e)
 
     return _pointcloud_to_splat(pointcloud_path, output_dir)
 
@@ -47,7 +50,6 @@ def _train_with_gsplat(
     num_iterations: int,
 ) -> Path | None:
     import torch
-    from gsplat import rasterization
 
     points, colors = _load_ply_points(pointcloud_path)
     if len(points) == 0:
