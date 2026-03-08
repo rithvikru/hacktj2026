@@ -22,6 +22,14 @@ Device backend:
 - `./scripts/start-device-backend.sh`
 - `./scripts/print-device-backend-url.sh`
 
+H100 backend:
+
+- `docs/h100-setup.md`
+- `./scripts/bootstrap-h100.sh`
+- `./scripts/verify-h100-stack.sh`
+- `./scripts/start-h100-backend.sh`
+- `./scripts/run-nerfstudio-splatfacto.sh`
+
 SAM2 quality mode:
 
 - The backend launcher auto-enables SAM2 if it finds:
