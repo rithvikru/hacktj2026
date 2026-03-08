@@ -87,6 +87,12 @@ final class WearableStreamSessionManager {
         do {
             try await bridge.beginRegistration()
             syncBridgeState()
+
+            for _ in 0..<5 {
+                try? await Task.sleep(for: .seconds(1))
+                syncBridgeState()
+                if case .registered = registrationState { break }
+            }
         } catch {
             registrationState = .failed(error.localizedDescription)
             lastErrorMessage = error.localizedDescription

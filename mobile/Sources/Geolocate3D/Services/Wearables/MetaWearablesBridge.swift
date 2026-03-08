@@ -167,30 +167,22 @@ final class MetaWearablesBridge: WearablesBridge {
 
         let devices = wearables.devices
         NSLog("[MWDAT] startStreaming — devices: %@", String(describing: devices))
-        if devices.isEmpty {
-            let err = WearablesBridgeError.noDeviceConnected
-            streamState = .failed(err.localizedDescription)
-            onStateChange(streamState)
-            throw err
-        }
-
         if let deviceId = devices.first,
            let device = wearables.deviceForIdentifier(deviceId) {
-            let linkState = device.linkState
-            NSLog("[MWDAT] device '%@' linkState: %@", device.nameOrId(), String(describing: linkState))
-            if linkState != .connected {
-                let err = WearablesBridgeError.noDeviceConnected
-                streamState = .failed("Device '\(device.nameOrId())' is not connected (state: \(linkState))")
-                onStateChange(streamState)
-                throw err
-            }
-        }
+            NSLog("[MWDAT] device '%@' linkState: %@", device.nameOrId(), String(describing: device.linkState))
 
-        let cameraGranted = try await requestCameraPermission(wearables: wearables)
-        if !cameraGranted {
-            streamState = .failed(WearablesBridgeError.cameraPermissionDenied.localizedDescription)
-            onStateChange(streamState)
-            throw WearablesBridgeError.cameraPermissionDenied
+            if device.linkState == .connected {
+                do {
+                    let cameraGranted = try await requestCameraPermission(wearables: wearables)
+                    if !cameraGranted {
+                        NSLog("[MWDAT] camera permission denied — will retry via stream error handler")
+                    }
+                } catch {
+                    NSLog("[MWDAT] camera permission check failed (non-fatal): %@", error.localizedDescription)
+                }
+            }
+        } else {
+            NSLog("[MWDAT] no devices yet — AutoDeviceSelector will wait for one")
         }
 
         let config = StreamSessionConfig(

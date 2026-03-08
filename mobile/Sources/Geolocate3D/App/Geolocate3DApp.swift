@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct Geolocate3DApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var coordinator = AppCoordinator()
     @State private var spatialSessionManager = SpatialSessionManager()
     @State private var roomStore = RoomStore()
@@ -38,8 +39,17 @@ struct Geolocate3DApp: App {
                 wearableStreamManager.configureIfNeeded()
             }
             .onOpenURL { url in
+                NSLog("[Geolocate3D] onOpenURL: %@", url.absoluteString)
                 Task {
                     await wearableStreamManager.handleOpenURL(url)
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+
+                    NSLog("[Geolocate3D] scenePhase → active, syncing SDK state")
+                    wearableStreamManager.syncBridgeState()
+                    wearableStreamManager.configureIfNeeded()
                 }
             }
         }
