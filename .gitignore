@@ -12,3 +12,12 @@ xtool/
 *.kate-swp
 ml/data/
 data/
+
+# Documentation (internal only)
+docs/
+FRONTEND-PLAN.md
+
+# Generated images
+competition-quadrant*.png
+revenue-funnel*.png
+mobile/download.webp

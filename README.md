@@ -1,49 +1,82 @@
-# hacktj2026
+# Geolocate3D
 
-Read this first:
+3D spatial intelligence app for iPhone 15 Pro Max. Scan a room with LiDAR or smart glasses, then find any object with natural language — "where are my keys?"
 
-- `docs/current-system-overview.md`
-- `docs/experimentation-log.md`
+## How it works
 
-Source-of-truth implementation spec:
+1. **Scan** — LiDAR room capture or Ray-Ban Meta glasses stream builds a 3D model of your space
+2. **Understand** — On-device object detection + open-vocab grounding labels everything in the scene
+3. **Search** — Ask in plain English; the app highlights the object in AR with a navigation path
 
-- `docs/technical-implementation-spec.md`
-- `docs/ai-ml-model-spec.md`
-- `docs/natural-language-search-spec.md`
-- `docs/execution-checklist.md`
-- `docs/dataset-source-research.md`
-- `docs/dataset-acquisition-plan.md`
-- `docs/reconstruction-research-and-fixes.md`
-- `docs/semantic-object-reconstruction.md`
-- `docs/frontend-semantic-room-spec.md`
-- `docs/frontend-photoreal-dense-spec.md`
+## Project structure
 
-ML workspace:
+```
+mobile/          iOS app (Swift, SwiftUI + ARKit + RoomPlan)
+ml/              ML workspace (PyTorch, CoreML export, serving)
+scripts/         Backend launchers and H100 bootstrap
+src/             Shared utilities
+```
 
-- `ml/README.md`
+### Mobile (`mobile/`)
 
-Device backend:
+SwiftPM package built with [xtool](https://github.com/nicklama/xtool). Targets iPhone 15 Pro Max (iOS 17+).
 
-- `./scripts/start-device-backend.sh`
-- `./scripts/print-device-backend-url.sh`
+Key modules:
+- `App/` — Entry point, navigation, coordinators
+- `Features/` — Scan, AR search, room viewer, outdoor capture, wearables
+- `Services/` — Backend client, location, thermal monitoring
+- `DesignSystem/` — Colors, typography, reusable components
+- `Models/` — Room, observation, and scan data types
 
-H100 backend:
+### ML (`ml/`)
 
-- `docs/h100-setup.md`
-- `./scripts/bootstrap-h100.sh`
-- `./scripts/verify-h100-stack.sh`
-- `./scripts/start-h100-backend.sh`
-- `./scripts/run-nerfstudio-splatfacto.sh`
+Python workspace managed with `uv`. See `ml/README.md` for setup and entrypoints.
 
-SAM2 quality mode:
+- `closed_set/` — On-device detector (training, eval, CoreML export)
+- `open_vocab/` — GroundingDINO + SAM2 for open-vocabulary search
+- `reconstruction/` — Dense 3D reconstruction pipeline
+- `hidden_inference/` — Candidate ranking for "where did I leave X?"
+- `serving/` — FastAPI backend with query and chat endpoints
 
-- The backend launcher auto-enables SAM2 if it finds:
-  - repo: `/Users/rithvikr/projects/sam2`
-  - checkpoint: `/Users/rithvikr/models/sam2/sam2.1_hiera_small.pt`
-- You can override those with `SAM2_REPO_DIR`, `SAM2_MODEL_DIR`, `SAM2_CONFIG_PATH`, and `SAM2_CHECKPOINT_PATH`.
+## Quick start
 
----
+### iOS app
 
-## Remaining TODO: Wire Outdoor Capture to Glasses
+```bash
+cd mobile
+xtool build          # cross-compile from Linux
+xtool install        # deploy to connected iPhone via USB
+```
 
-All wearables code is now on `main` (merged from `ui-trial`). The outdoor capture pipeline (`OutdoorMapViewModel`) still uses a simulated 1 FPS `Timer` instead of real `WearablesBridge` frame capture. To fix: replace the `Timer` in `OutdoorMapViewModel.startCapture()` with `WearableStreamSessionManager` frame callbacks + GPS stamping via `LocationService`.
+### ML backend
+
+```bash
+cd ml
+uv sync --group dev --group query-serving
+uv run uvicorn serving.api.app:app --app-dir . --reload
+```
+
+### Device backend (local Mac)
+
+```bash
+./scripts/start-device-backend.sh
+```
+
+### H100 backend (remote GPU)
+
+```bash
+./scripts/bootstrap-h100.sh
+./scripts/start-h100-backend.sh
+```
+
+## SAM2 (optional)
+
+The backend auto-enables SAM2 mask refinement if `SAM2_CONFIG_PATH` and `SAM2_CHECKPOINT_PATH` are set. Without them it falls back to bounding-box-only masks.
+
+## Wearables
+
+Ray-Ban Meta smart glasses integration is on `main`. Outdoor capture uses `WearablesBridge` + GPS for location-stamped frame streaming.
+
+## Team
+
+Built at HackTJ 2026.
